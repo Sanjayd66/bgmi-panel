@@ -2,8 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO SYNC ADMIN + EASY OCR</title>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <title>BGMI PRO SYNC ADMIN - CUSTOM PIXEL OCR</title>
   <style>
     :root { --orange:#ff5a00; --blue:#0088ff; --green:#2ecc71; --red:#dc3545; --dark:#1a1a1a; }
     body{margin:0;font-family:'Oswald',sans-serif;background:#050505;color:#fff;overflow-x:hidden;}
@@ -29,7 +28,7 @@
     .controls-grid { display: flex; gap: 15px; align-items: center; margin-top: 10px; flex-wrap: wrap; background: #222; padding: 10px; border-radius: 6px; }
     .controls-grid label { font-size: 12px; color: #ccc; }
     .controls-grid input[type="range"] { width: 100px; }
-    #previewCanvas, #procCanvas { border: 2px solid var(--orange); background: #000; width: 160px; height: 90px; object-fit: contain; }
+    #previewCanvas, #procCanvas { border: 2px solid var(--orange); background: #000; width: 160px; height: 90px; object-fit: contain; image-rendering: pixelated; }
   </style>
 </head>
 <body>
@@ -38,7 +37,7 @@
 
 <div id="admin">
   <div class="header">
-    <span>SYNC DASHBOARD (EASY SLIDER OCR)</span>
+    <span>SYNC DASHBOARD (CUSTOM NATIVE OCR)</span>
     <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
   </div>
 
@@ -48,38 +47,41 @@
       <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP</button>
     </div>
 
-    <!-- CROP ADJUSTMENT SLIDERS -->
     <div class="controls-grid">
       <div>
-        <label>Left/Right (X): <b id="valX">2%</b></label><br>
-        <input type="range" id="posX" min="0" max="100" value="2" oninput="updateCropParams()">
+        <label>Left/Right (X): <b id="valX">26%</b></label><br>
+        <input type="range" id="posX" min="0" max="100" value="26" oninput="updateCropParams()">
       </div>
       <div>
-        <label>Top/Down (Y): <b id="valY">15%</b></label><br>
-        <input type="range" id="posY" min="0" max="100" value="15" oninput="updateCropParams()">
+        <label>Top/Down (Y): <b id="valY">73%</b></label><br>
+        <input type="range" id="posY" min="0" max="100" value="73" oninput="updateCropParams()">
       </div>
       <div>
-        <label>Box Width: <b id="valW">10%</b></label><br>
-        <input type="range" id="sizeW" min="1" max="50" value="10" oninput="updateCropParams()">
+        <label>Box Width: <b id="valW">6%</b></label><br>
+        <input type="range" id="sizeW" min="1" max="30" value="6" oninput="updateCropParams()">
       </div>
       <div>
-        <label>Box Height: <b id="valH">10%</b></label><br>
-        <input type="range" id="sizeH" min="1" max="50" value="10" oninput="updateCropParams()">
+        <label>Box Height: <b id="valH">7%</b></label><br>
+        <input type="range" id="sizeH" min="1" max="30" value="7" oninput="updateCropParams()">
+      </div>
+      <div>
+        <label>Color Sensitivity: <b id="valSens">40</b></label><br>
+        <input type="range" id="sens" min="10" max="100" value="40" oninput="updateCropParams()">
       </div>
     </div>
 
     <div style="display: flex; gap: 20px; margin-top: 15px; align-items: center;">
       <div>
-        <div style="font-size: 11px; color:#aaa;">Raw Live Capture:</div>
+        <div style="font-size: 11px; color:#aaa;">Raw Game Stream:</div>
         <canvas id="previewCanvas"></canvas>
       </div>
       <div>
-        <div style="font-size: 11px; color:var(--green);">High Contrast OCR Feed:</div>
+        <div style="font-size: 11px; color:var(--green);">Isolated Text Mask:</div>
         <canvas id="procCanvas"></canvas>
       </div>
       <div style="font-size: 14px;">
         <div><b>Status:</b> <span id="ocrStatus">Disabled</span></div>
-        <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-size: 28px; font-weight:bold;">--</span></div>
+        <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-size: 32px; font-weight:bold;">--</span></div>
       </div>
     </div>
   </div>
@@ -126,7 +128,6 @@
 
   let ocrInterval = null;
   let lastActiveSlot = null;
-  let ocrWorker = null;
 
   function syncToCloud() {
     const data = { teamDB, activeMap };
@@ -190,27 +191,123 @@
     document.getElementById('valY').textContent = document.getElementById('posY').value + '%';
     document.getElementById('valW').textContent = document.getElementById('sizeW').value + '%';
     document.getElementById('valH').textContent = document.getElementById('sizeH').value + '%';
+    document.getElementById('valSens').textContent = document.getElementById('sens').value;
   }
 
-  // Preprocess Image for high OCR accuracy
-  function preprocessImage(srcCanvas, targetCanvas) {
+  // --- NATIVE CUSTOM DIGIT RECOGNIZER ENGINE ---
+  function processCustomOCR(srcCanvas, targetCanvas) {
     const ctx = targetCanvas.getContext('2d');
-    const scale = 3;
-    targetCanvas.width = srcCanvas.width * scale;
-    targetCanvas.height = srcCanvas.height * scale;
+    const w = 60, h = 40;
+    targetCanvas.width = w;
+    targetCanvas.height = h;
 
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(srcCanvas, 0, 0, targetCanvas.width, targetCanvas.height);
-
-    const imgData = ctx.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
+    ctx.drawImage(srcCanvas, 0, 0, w, h);
+    const imgData = ctx.getImageData(0, 0, w, h);
     const data = imgData.data;
+    const sens = parseInt(document.getElementById('sens').value);
 
-    for (let i = 0; i < data.length; i += 4) {
-      const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-      const val = avg >= 150 ? 255 : 0;
-      data[i] = val; data[i + 1] = val; data[i + 2] = val;
+    // Step 1: Contrast isolation (White Digits Extraction)
+    let grid = Array(h).fill(0).map(() => Array(w).fill(0));
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4;
+        const r = data[idx], g = data[idx+1], b = data[idx+2];
+        
+        // Match pure white text relative to background
+        if (r > 200 && g > 200 && b > 200 && (Math.abs(r-g) < 15)) {
+          grid[y][x] = 1;
+          data[idx] = 255; data[idx+1] = 255; data[idx+2] = 255;
+        } else {
+          grid[y][x] = 0;
+          data[idx] = 0; data[idx+1] = 0; data[idx+2] = 0;
+        }
+      }
     }
     ctx.putImageData(imgData, 0, 0);
+
+    // Step 2: Vertical projection to separate left and right digits
+    let colCounts = Array(w).fill(0);
+    for (let x = 0; x < w; x++) {
+      for (let y = 0; y < h; y++) {
+        if (grid[y][x] === 1) colCounts[x]++;
+      }
+    }
+
+    let digitBlocks = [];
+    let inDigit = false, startX = 0;
+    for (let x = 0; x < w; x++) {
+      if (colCounts[x] >= 3 && !inDigit) { inDigit = true; startX = x; }
+      else if (colCounts[x] < 3 && inDigit) {
+        inDigit = false;
+        if (x - startX >= 3) digitBlocks.push({ startX, endX: x - 1 });
+      }
+    }
+    if (inDigit && (w - startX >= 3)) digitBlocks.push({ startX, endX: w - 1 });
+
+    if (digitBlocks.length === 0) return null;
+
+    // Helper: Identify individual digit shape (0-9) using structural features
+    function recognizeDigit(b) {
+      let dW = b.endX - b.startX + 1;
+      let topY = 0, botY = h - 1;
+      
+      for (let y = 0; y < h; y++) {
+        let has = false;
+        for (let x = b.startX; x <= b.endX; x++) if (grid[y][x] === 1) has = true;
+        if (has) { topY = y; break; }
+      }
+      for (let y = h - 1; y >= 0; y--) {
+        let has = false;
+        for (let x = b.startX; x <= b.endX; x++) if (grid[y][x] === 1) has = true;
+        if (has) { botY = y; break; }
+      }
+
+      let dH = botY - topY + 1;
+      let midY = Math.floor((topY + botY) / 2);
+      let midX = Math.floor((b.startX + b.endX) / 2);
+
+      // Aspect Ratio Check for '1'
+      if (dW <= 8 || (dH / dW > 2.2)) return 1;
+
+      // Sample structural regions
+      let topRow = 0, midRow = 0, botRow = 0;
+      let topL = 0, topR = 0, botL = 0, botR = 0;
+
+      for (let x = b.startX; x <= b.endX; x++) {
+        if (grid[topY + 1][x]) topRow++;
+        if (grid[midY][x]) midRow++;
+        if (grid[botY - 1][x]) botRow++;
+      }
+
+      for (let y = topY; y < midY; y++) {
+        if (grid[y][b.startX]) topL++;
+        if (grid[y][b.endX]) topR++;
+      }
+      for (let y = midY; y <= botY; y++) {
+        if (grid[y][b.startX]) botL++;
+        if (grid[y][b.endX]) botR++;
+      }
+
+      // Feature matching rules
+      if (midRow > 2 && topL === 0 && botR === 0) return 2;
+      if (midRow > 2 && topL === 0 && botL === 0) return 3;
+      if (topRow < 2 && midRow > 2) return 4;
+      if (midRow > 2 && topR === 0 && botL === 0) return 5;
+      if (midRow > 2 && topR === 0 && botL > 1) return 6;
+      if (topRow > 2 && topL === 0 && botL === 0) return 7;
+      if (topL > 1 && topR > 1 && botL > 1 && botR > 1 && midRow > 2) return 8;
+      if (topL > 1 && topR > 1 && botL === 0 && midRow > 2) return 9;
+      if (topL > 1 && topR > 1 && botL > 1 && botR > 1 && midRow <= 2) return 0;
+
+      return 1; // Default fallback
+    }
+
+    let detectedStr = "";
+    digitBlocks.forEach(block => {
+      detectedStr += recognizeDigit(block);
+    });
+
+    return parseInt(detectedStr, 10);
   }
 
   async function startOCR() {
@@ -219,23 +316,13 @@
       const video = document.getElementById('videoFeed');
       video.srcObject = stream;
 
-      document.getElementById('ocrStatus').textContent = "Engine Load Ho Raha Hai...";
-      
-      if (!ocrWorker) {
-        ocrWorker = await Tesseract.createWorker('eng');
-        await ocrWorker.setParameters({
-          tessedit_char_whitelist: '0123456789',
-          tessedit_pageseg_mode: '6'
-        });
-      }
-
       document.getElementById('ocrStatus').textContent = "Scanning Active...";
 
       const prevCanvas = document.getElementById('previewCanvas');
       const prevCtx = prevCanvas.getContext('2d');
       const procCanvas = document.getElementById('procCanvas');
 
-      ocrInterval = setInterval(async () => {
+      ocrInterval = setInterval(() => {
         if (video.videoWidth === 0) return;
 
         const pX = parseInt(document.getElementById('posX').value) / 100;
@@ -252,22 +339,17 @@
         prevCanvas.height = vh;
         prevCtx.drawImage(video, vx, vy, vw, vh, 0, 0, vw, vh);
 
-        preprocessImage(prevCanvas, procCanvas);
-
-        const { data: { text } } = await ocrWorker.recognize(procCanvas);
-        const numbers = text.match(/\d+/g);
+        // Run Native Feature Analysis OCR
+        const detectedNum = processCustomOCR(prevCanvas, procCanvas);
         
-        if (numbers && numbers.length > 0) {
-          const detectedNum = parseInt(numbers[0], 10);
-          if (detectedNum >= 1 && detectedNum <= 25) {
-            document.getElementById('detectedSlot').textContent = detectedNum;
-            if (detectedNum !== lastActiveSlot) {
-              lastActiveSlot = detectedNum;
-              sendData(detectedNum);
-            }
+        if (detectedNum && detectedNum >= 1 && detectedNum <= 25) {
+          document.getElementById('detectedSlot').textContent = detectedNum;
+          if (detectedNum !== lastActiveSlot) {
+            lastActiveSlot = detectedNum;
+            sendData(detectedNum);
           }
         }
-      }, 400);
+      }, 250); // Fast 250ms interval
 
     } catch (err) {
       alert("Screen capture error: " + err);
