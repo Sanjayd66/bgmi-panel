@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO SYNC ADMIN + AUTO OCR</title>
-  <!-- Tesseract.js CDN for OCR -->
+  <title>BGMI PRO SYNC ADMIN + CROP OCR</title>
+  <!-- Tesseract.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     :root { --orange:#ff5a00; --blue:#0088ff; --green:#2ecc71; --red:#dc3545; --dark:#1a1a1a; }
@@ -26,9 +26,11 @@
     th, td { padding: 8px; text-align: left; border-bottom: 1px solid #222; }
     input { background:#000; color:#fff; border:1px solid #444; padding:5px; border-radius:4px; width: 95%; }
     
-    /* OCR Preview Section */
-    .ocr-box { background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; display: flex; gap: 15px; align-items: center; }
-    #cropCanvas { border: 1px solid var(--orange); background: #000; width: 150px; height: 80px; object-fit: contain; }
+    /* Interactive OCR Container */
+    .ocr-box { background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; }
+    .canvas-container { position: relative; display: inline-block; background: #000; margin-top: 10px; cursor: crosshair; }
+    #selectionCanvas { position: absolute; top: 0; left: 0; z-index: 10; }
+    #previewCanvas { border: 1px solid var(--orange); display: inline-block; margin-top: 10px; background: #000; }
   </style>
 </head>
 <body>
@@ -37,20 +39,34 @@
 
 <div id="admin">
   <div class="header">
-    <span>SYNC DASHBOARD (AUTO OCR ENABLED)</span>
+    <span>SYNC DASHBOARD (CUSTOM AREA OCR)</span>
     <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
   </div>
 
-  <!-- OCR Control Bar -->
+  <!-- OCR Interactive Box -->
   <div class="ocr-box">
     <div>
-      <button class="btn" style="background:var(--green)" onclick="startOCR()">🎥 START AUTO OCR</button>
+      <button class="btn" style="background:var(--green)" onclick="startOCR()">🎥 1. SELECT SCREEN & START</button>
       <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP OCR</button>
+      <span style="font-size: 12px; margin-left:15px; color:#aaa;">👇 Mouse se Video Stream par Drag karke Team Number ka Box select karo:</span>
     </div>
-    <canvas id="cropCanvas" width="200" height="100"></canvas>
-    <div style="font-size: 13px;">
-      <div><b>OCR Status:</b> <span id="ocrStatus">Disabled</span></div>
-      <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-weight:bold;">--</span></div>
+
+    <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 10px;">
+      <!-- Interactive Video Feed Area -->
+      <div class="canvas-container" id="container">
+        <video id="videoFeed" autoplay style="display:block; max-width: 600px;"></video>
+        <canvas id="selectionCanvas"></canvas>
+      </div>
+
+      <!-- Live Crop Preview & Stats -->
+      <div>
+        <div style="font-size: 13px; margin-bottom: 5px;"><b>Selected Region Preview:</b></div>
+        <canvas id="previewCanvas" width="120" height="60"></canvas>
+        <div style="font-size: 13px; margin-top: 10px;">
+          <div><b>Status:</b> <span id="ocrStatus">Disabled</span></div>
+          <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-size: 20px; font-weight:bold;">--</span></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -76,9 +92,6 @@
   </div>
 </div>
 
-<!-- Hidden video element to capture stream feed -->
-<video id="videoFeed" autoplay style="display:none;"></video>
-
 <script>
   const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
   const CONFIG_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/configData.json";
@@ -98,6 +111,11 @@
   let ocrInterval = null;
   let lastActiveSlot = null;
   let ocrWorker = null;
+
+  // Selection Box Variables
+  let cropArea = { x: 20, y: 20, w: 100, h: 50 }; // Default crop
+  let isDragging = false;
+  let startX, startY;
 
   async function syncToCloud() {
     const data = { teamDB, activeMap };
@@ -157,48 +175,87 @@
     fetch(LIVE_URL, {method:"PUT", body:JSON.stringify(payload)});
     document.getElementById('liveStatus').textContent = `LIVE: SLOT ${slot} - ${t.name}`;
     
-    // Highlight UI grid active slot
     document.querySelectorAll('.grid-item').forEach(el => el.classList.remove('active-slot'));
     const activeElem = document.getElementById(`slot-${slot}`);
     if(activeElem) activeElem.classList.add('active-slot');
   }
 
-  // --- OCR AUTO-DETECTION ENGINE ---
+  // --- MOUSE SE AREA SELECT KARNE KA ENGINE ---
+  const selCanvas = document.getElementById('selectionCanvas');
+  const selCtx = selCanvas.getContext('2d');
+
+  function drawSelection() {
+    selCtx.clearRect(0, 0, selCanvas.width, selCanvas.height);
+    selCtx.strokeStyle = '#ff5a00';
+    selCtx.lineWidth = 2;
+    selCtx.fillStyle = 'rgba(255, 90, 0, 0.2)';
+    selCtx.fillRect(cropArea.x, cropArea.y, cropArea.w, cropArea.h);
+    selCtx.strokeRect(cropArea.x, cropArea.y, cropArea.w, cropArea.h);
+  }
+
+  selCanvas.addEventListener('mousedown', (e) => {
+    const rect = selCanvas.getBoundingClientRect();
+    startX = e.clientX - rect.left;
+    startY = e.clientY - rect.top;
+    isDragging = true;
+  });
+
+  selCanvas.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const rect = selCanvas.getBoundingClientRect();
+    const currentX = e.clientX - rect.left;
+    const currentY = e.clientY - rect.top;
+    cropArea.x = Math.min(startX, currentX);
+    cropArea.y = Math.min(startY, currentY);
+    cropArea.w = Math.abs(currentX - startX);
+    cropArea.h = Math.abs(currentY - startY);
+    drawSelection();
+  });
+
+  selCanvas.addEventListener('mouseup', () => { isDragging = false; });
+
+  // --- OCR ENGINE ---
   async function startOCR() {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const video = document.getElementById('videoFeed');
       video.srcObject = stream;
+
+      video.onloadedmetadata = () => {
+        selCanvas.width = video.clientWidth;
+        selCanvas.height = video.clientHeight;
+        drawSelection();
+      };
       
-      document.getElementById('ocrStatus').textContent = "Initializing Engine...";
+      document.getElementById('ocrStatus').textContent = "Loading OCR Engine...";
       
       if (!ocrWorker) {
         ocrWorker = await Tesseract.createWorker('eng');
-        await ocrWorker.setParameters({
-          tessedit_char_whitelist: '0123456789Team',
-        });
+        await ocrWorker.setParameters({ tessedit_char_whitelist: '0123456789' });
       }
 
-      document.getElementById('ocrStatus').textContent = "Scanning Live Feed...";
+      document.getElementById('ocrStatus').textContent = "Scanning Selected Box...";
 
-      const canvas = document.getElementById('cropCanvas');
-      const ctx = canvas.getContext('2d');
+      const prevCanvas = document.getElementById('previewCanvas');
+      const prevCtx = prevCanvas.getContext('2d');
 
       ocrInterval = setInterval(async () => {
-        if (video.videoWidth === 0) return;
+        if (video.videoWidth === 0 || cropArea.w === 0 || cropArea.h === 0) return;
 
-        // CROP AREA CALCULATION: Adjust these percentages based on your game feed layout
-        // Default target: Top-Left team banner area
-        const cropX = video.videoWidth * 0.02;   // 2% from left
-        const cropY = video.videoHeight * 0.15;  // 15% from top
-        const cropW = video.videoWidth * 0.12;   // 12% width
-        const cropH = video.videoHeight * 0.10;  // 10% height
+        // Convert UI pixels to actual video resolution
+        const scaleX = video.videoWidth / video.clientWidth;
+        const scaleY = video.videoHeight / video.clientHeight;
 
-        canvas.width = cropW;
-        canvas.height = cropH;
-        ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+        const vx = cropArea.x * scaleX;
+        const vy = cropArea.y * scaleY;
+        const vw = cropArea.w * scaleX;
+        const vh = cropArea.h * scaleY;
 
-        const { data: { text } } = await ocrWorker.recognize(canvas);
+        prevCanvas.width = vw;
+        prevCanvas.height = vh;
+        prevCtx.drawImage(video, vx, vy, vw, vh, 0, 0, vw, vh);
+
+        const { data: { text } } = await ocrWorker.recognize(prevCanvas);
         const numbers = text.match(/\d+/g);
         
         if (numbers && numbers.length > 0) {
@@ -211,10 +268,10 @@
             }
           }
         }
-      }, 700); // Scans every 700ms
+      }, 500); // Scans every 500ms
 
     } catch (err) {
-      alert("Screen Capture cancelled or failed: " + err);
+      alert("Screen Capture failed: " + err);
       document.getElementById('ocrStatus').textContent = "Failed";
     }
   }
