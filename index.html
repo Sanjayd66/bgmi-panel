@@ -2,301 +2,180 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO SYNC ADMIN - TESSERACT OCR</title>
-  <!-- Tesseract.js Engine CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <title>BGMI HYBRID HIGH-ACCURACY OCR</title>
   <style>
     :root { --orange:#ff5a00; --blue:#0088ff; --green:#2ecc71; --red:#dc3545; --dark:#1a1a1a; }
-    body{margin:0;font-family:'Oswald',sans-serif;background:#050505;color:#fff;overflow-x:hidden;}
-    #admin{padding:20px;}
-    .header { background:#000; border-left:5px solid var(--orange); padding:15px; font-size:20px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center; }
-    .grid-container { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
-    .grid-item { background: var(--dark); border: 2px solid #333; border-radius: 8px; padding: 15px 5px; text-align: center; cursor: pointer; transition: 0.2s; position: relative; }
-    .grid-item.active-slot { border-color: white; box-shadow: 0 0 15px rgba(255,255,255,0.5); }
-    .grid-item.disabled-slot { opacity: 0.2; pointer-events: none; }
-    .grid-item h2 { margin: 0; font-size: 32px; color: #fff; }
-    .grid-item p { margin: 5px 0 0 0; font-size: 12px; color: #aaa; text-transform: uppercase; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-    .btn-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-    .btn { padding: 10px 20px; border:none; border-radius:4px; color:#fff; font-weight:bold; cursor:pointer; text-transform:uppercase; font-size:12px; }
-    #import-area { width:100%; height:80px; background:#111; color:#0f0; border:1px solid #444; padding:10px; font-size:12px; margin-bottom:10px; border-radius:4px; box-sizing: border-box; }
-    .settings-panel { background: #111; padding: 20px; border-radius: 8px; margin-top: 20px; border: 1px solid #333; }
-    .hide-ui { display: none !important; }
-    #showSettings { display:none; position:fixed; top:10px; right:10px; z-index:1000; background: var(--green); }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #222; }
-    input { background:#000; color:#fff; border:1px solid #444; padding:5px; border-radius:4px; width: 95%; }
-    
+    body{margin:0;font-family:sans-serif;background:#050505;color:#fff;padding:20px;}
     .ocr-box { background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; }
-    .controls-grid { display: flex; gap: 15px; align-items: center; margin-top: 10px; flex-wrap: wrap; background: #222; padding: 10px; border-radius: 6px; }
-    .controls-grid label { font-size: 12px; color: #ccc; }
-    .controls-grid input[type="range"] { width: 100px; }
-    #previewCanvas, #procCanvas { border: 2px solid var(--orange); background: #000; width: 160px; height: 90px; object-fit: contain; image-rendering: pixelated; }
+    .controls { display: flex; gap: 15px; margin-top: 10px; flex-wrap: wrap; background: #222; padding: 10px; border-radius: 6px; }
+    .btn { padding: 10px 20px; border:none; border-radius:4px; color:#fff; font-weight:bold; cursor:pointer; }
+    canvas { border: 2px solid var(--orange); background: #000; width: 160px; height: 90px; }
   </style>
 </head>
 <body>
 
-<button id="showSettings" class="btn" onclick="toggleUI(false)">SHOW SETTINGS</button>
+<div class="ocr-box">
+  <button class="btn" style="background:var(--green)" onclick="startOCR()">🎥 SELECT GAME SCREEN</button>
+  <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP</button>
 
-<div id="admin">
-  <div class="header">
-    <span>SYNC DASHBOARD (TESSERACT AI OCR)</span>
-    <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
+  <div class="controls">
+    <label>X-Pos: <input type="range" id="posX" min="0" max="100" value="27" oninput="u()"></label>
+    <label>Y-Pos: <input type="range" id="posY" min="0" max="100" value="74" oninput="u()"></label>
+    <label>Width: <input type="range" id="sizeW" min="1" max="30" value="6" oninput="u()"></label>
+    <label>Height: <input type="range" id="sizeH" min="1" max="30" value="7" oninput="u()"></label>
+    <label>Threshold: <input type="range" id="sens" min="100" max="255" value="190" oninput="u()"></label>
   </div>
 
-  <div class="ocr-box">
+  <div style="display:flex; gap:20px; margin-top:15px; align-items:center;">
+    <canvas id="prevCanvas"></canvas>
+    <canvas id="procCanvas"></canvas>
     <div>
-      <button class="btn" style="background:var(--green)" onclick="startOCR()">🎥 1. SELECT GAME SCREEN</button>
-      <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP</button>
+      <div>Status: <span id="ocrStatus">Stopped</span></div>
+      <div>Detected Slot: <h1 id="detectedSlot" style="color:var(--orange); margin:0;">--</h1></div>
     </div>
-
-    <div class="controls-grid">
-      <div>
-        <label>Left/Right (X): <b id="valX">27%</b></label><br>
-        <input type="range" id="posX" min="0" max="100" value="27" oninput="updateCropParams()">
-      </div>
-      <div>
-        <label>Top/Down (Y): <b id="valY">74%</b></label><br>
-        <input type="range" id="posY" min="0" max="100" value="74" oninput="updateCropParams()">
-      </div>
-      <div>
-        <label>Box Width: <b id="valW">6%</b></label><br>
-        <input type="range" id="sizeW" min="1" max="30" value="6" oninput="updateCropParams()">
-      </div>
-      <div>
-        <label>Box Height: <b id="valH">7%</b></label><br>
-        <input type="range" id="sizeH" min="1" max="30" value="7" oninput="updateCropParams()">
-      </div>
-      <div>
-        <label>Color Sensitivity: <b id="valSens">180</b></label><br>
-        <input type="range" id="sens" min="100" max="240" value="180" oninput="updateCropParams()">
-      </div>
-    </div>
-
-    <div style="display: flex; gap: 20px; margin-top: 15px; align-items: center;">
-      <div>
-        <div style="font-size: 11px; color:#aaa;">Raw Game Stream:</div>
-        <canvas id="previewCanvas"></canvas>
-      </div>
-      <div>
-        <div style="font-size: 11px; color:var(--green);">Isolated Text Mask:</div>
-        <canvas id="procCanvas"></canvas>
-      </div>
-      <div style="font-size: 14px;">
-        <div><b>Status:</b> <span id="ocrStatus">Disabled</span></div>
-        <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-size: 32px; font-weight:bold;">--</span></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="grid-container" id="controlGrid"></div>
-
-  <div class="settings-area">
-    <textarea id="import-area" placeholder="1 | TEAM NAME"></textarea>
-    <div class="btn-group">
-        <button class="btn" style="background:#333" onclick="importSlots()">IMPORT</button>
-        <button class="btn" style="background:var(--orange)" onclick="syncToCloud()">☁️ SYNC TO CLOUD (SAVE)</button>
-        <button class="btn" style="background:var(--blue)" onclick="loadFromCloud()">🔄 LOAD FROM CLOUD</button>
-        <button class="btn" style="background:var(--red)" onclick="toggleUI(true)">CAST MODE</button>
-    </div>
-  </div>
-
-  <div class="settings-panel settings-area">
-    <table>
-      <thead>
-        <tr><th>SLOT</th><th>ACTIVE</th><th>TEAM NAME</th><th>LOGO</th></tr>
-      </thead>
-      <tbody id="configTable"></tbody>
-    </table>
   </div>
 </div>
 
 <video id="videoFeed" autoplay style="display:none;"></video>
 
 <script>
-  const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
-  const CONFIG_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/configData.json";
-
-  const fixedColors = {
-    1: '#10449e', 2: '#1b5e20', 3: '#c62828', 4: '#e65100', 5: '#6a1b9a',
-    6: '#2ecc71', 7: '#ad1457', 8: '#00796b', 9: '#795548', 10: '#303f9f',
-    11: '#fbc02d', 12: '#1565c0', 13: '#388e3c', 14: '#ff8f00', 15: '#d81b60',
-    16: '#7b1fa2', 17: '#00897b', 18: '#9e9e9e', 19: '#558b2f', 20: '#5d4037',
-    21: '#0277bd', 22: '#616161', 23: '#ff5722', 24: '#7cb342', 25: '#263238'
-  };
-
-  let teamDB = JSON.parse(localStorage.getItem('bgmi_v23_db') || '{}');
-  let activeMap = JSON.parse(localStorage.getItem('bgmi_active_map') || '[]');
-  if(activeMap.length === 0) activeMap = Array(26).fill(true);
-
-  let ocrWorker = null;
   let ocrInterval = null;
-  let isProcessing = false;
-  let lastActiveSlot = null;
 
-  function syncToCloud() {
-    const data = { teamDB, activeMap };
-    fetch(CONFIG_URL, { method: "PUT", body: JSON.stringify(data) }).then(() => alert("Saved!"));
+  function u(){
+    // Utility UI handler
   }
 
-  function loadFromCloud() {
-    fetch(CONFIG_URL).then(r => r.json()).then(data => {
-      if(data) {
-        teamDB = data.teamDB; activeMap = data.activeMap;
-        localStorage.setItem('bgmi_v23_db', JSON.stringify(teamDB));
-        localStorage.setItem('bgmi_active_map', JSON.stringify(activeMap));
-        init();
-      }
-    });
-  }
-
-  function init() {
-    const grid = document.getElementById('controlGrid');
-    const table = document.getElementById('configTable');
-    grid.innerHTML = ""; table.innerHTML = "";
-    for(let i=1; i<=25; i++) {
-      if(!teamDB[i]) teamDB[i] = { name: `TEAM ${i}`, logo: `${i}` };
-      const t = teamDB[i]; const on = activeMap[i];
-      grid.innerHTML += `<div class="grid-item ${on ? '' : 'disabled-slot'}" id="slot-${i}" onclick="sendData(${i})" style="border-bottom: 5px solid ${fixedColors[i]}"><h2>${i}</h2><p>${t.name}</p></div>`;
-      table.innerHTML += `<tr><td><b>${i}</b></td><td><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleSlot(${i}, this.checked)" style="width:20px;"></td><td><input value="${t.name}" onchange="update(${i}, 'name', this.value)"></td><td><input value="${t.logo}" onchange="update(${i}, 'logo', this.value)"></td></tr>`;
-    }
-  }
-
-  function toggleSlot(i, val) { activeMap[i] = val; localStorage.setItem('bgmi_active_map', JSON.stringify(activeMap)); init(); }
-  function update(i, k, v) { teamDB[i][k] = v; localStorage.setItem('bgmi_v23_db', JSON.stringify(teamDB)); init(); }
-
-  function importSlots(){
-    const text=document.getElementById('import-area').value;
-    text.split('\n').forEach(line=>{
-      const m=line.match(/(\d+)\s*[|•-]\s*(.+)/);
-      if(m){ const slot = parseInt(m[1]); if(slot>=1 && slot<=25) teamDB[slot].name = m[2].trim(); }
-    });
-    localStorage.setItem('bgmi_v23_db',JSON.stringify(teamDB)); init();
-  }
-
-  function toggleUI(hide) {
-    document.querySelectorAll('.settings-area').forEach(el => el.classList.toggle('hide-ui', hide));
-    document.getElementById('showSettings').style.display = hide ? 'block' : 'none';
-  }
-
-  function sendData(slot) {
-    if(!activeMap[slot]) return;
-    const t = teamDB[slot];
-    const payload = {slot, name:t.name, logo:t.logo, sbg:fixedColors[slot], ts:Date.now()};
-    fetch(LIVE_URL, {method:"PUT", body:JSON.stringify(payload)});
-    document.getElementById('liveStatus').textContent = `LIVE: SLOT ${slot} - ${t.name}`;
+  // Pure Geometric Segment Matrix Matcher (Optimized for BGMI Esports Font)
+  function decodeBGMIDigit(grid, startX, endX, h) {
+    let w = endX - startX + 1;
+    if (w <= 0) return "";
     
-    document.querySelectorAll('.grid-item').forEach(el => el.classList.remove('active-slot'));
-    const activeElem = document.getElementById(`slot-${slot}`);
-    if(activeElem) activeElem.classList.add('active-slot');
+    let ratio = w / h;
+    if (ratio < 0.38) return "1"; // '1' is distinctively narrow
+
+    let top = 0, mid = Math.floor(h / 2), bot = h - 1;
+    let tL = 0, tR = 0, mL = 0, mR = 0, bL = 0, bR = 0;
+
+    for (let y = 0; y < h; y++) {
+      for (let x = startX; x <= endX; x++) {
+        if (grid[y][x]) {
+          let isLeft = x < (startX + w / 2);
+          if (y < mid) {
+            if (isLeft) tL++; else tR++;
+          } else if (y > mid) {
+            if (isLeft) bL++; else bR++;
+          } else {
+            if (isLeft) mL++; else mR++;
+          }
+        }
+      }
+    }
+
+    // BGMI Font Matrix Rules
+    if (tL > 2 && tR > 2 && bL > 2 && bR > 2 && (mL + mR) < 2) return "0";
+    if (tL < 2 && tR > 2 && bL > 2 && bR < 2) return "2";
+    if (tL < 2 && tR > 2 && bL < 2 && bR > 2) return "3";
+    if (tL > 2 && tR > 2 && bL < 2 && bR > 2 && (mL + mR) > 2) return "4";
+    if (tL > 2 && tR < 2 && bL < 2 && bR > 2) return "5";
+    if (tL > 2 && tR < 2 && bL > 2 && bR > 2) return "6";
+    if (tR > 2 && bR > 2 && tL < 2) return "7";
+    if (tL > 2 && tR > 2 && bL > 2 && bR > 2 && (mL + mR) > 2) return "8";
+    if (tL > 2 && tR > 2 && bL < 2 && bR > 2) return "9";
+
+    return "";
   }
 
-  function updateCropParams() {
-    document.getElementById('valX').textContent = document.getElementById('posX').value + '%';
-    document.getElementById('valY').textContent = document.getElementById('posY').value + '%';
-    document.getElementById('valW').textContent = document.getElementById('sizeW').value + '%';
-    document.getElementById('valH').textContent = document.getElementById('sizeH').value + '%';
-    document.getElementById('valSens').textContent = document.getElementById('sens').value;
-  }
-
-  // Pre-process canvas to high contrast B&W for Tesseract Engine
-  function prepareCanvasForTesseract(srcCanvas, targetCanvas) {
-    const ctx = targetCanvas.getContext('2d');
-    const w = 120, h = 80;
-    targetCanvas.width = w; targetCanvas.height = h;
+  function parseCrop(srcCanvas, procCanvas) {
+    const ctx = procCanvas.getContext('2d');
+    const w = 60, h = 40;
+    procCanvas.width = w; procCanvas.height = h;
 
     ctx.drawImage(srcCanvas, 0, 0, w, h);
     const imgData = ctx.getImageData(0, 0, w, h);
-    const data = imgData.data;
-    const sensThreshold = parseInt(document.getElementById('sens').value);
+    const d = imgData.data;
+    const thresh = parseInt(document.getElementById('sens').value);
 
-    for (let i = 0; i < data.length; i += 4) {
-      const avg = (data[i] + data[i+1] + data[i+2]) / 3;
-      if (avg >= sensThreshold) {
-        data[i] = 0; data[i+1] = 0; data[i+2] = 0; // Black Text
-      } else {
-        data[i] = 255; data[i+1] = 255; data[i+2] = 255; // White Background
+    let grid = Array(h).fill(0).map(() => Array(w).fill(0));
+
+    // Binarization
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let i = (y * w + x) * 4;
+        let brightness = (d[i] + d[i+1] + d[i+2]) / 3;
+        if (brightness >= thresh) {
+          grid[y][x] = 1;
+          d[i] = 255; d[i+1] = 255; d[i+2] = 255;
+        } else {
+          grid[y][x] = 0;
+          d[i] = 0; d[i+1] = 0; d[i+2] = 0;
+        }
       }
     }
     ctx.putImageData(imgData, 0, 0);
+
+    // Column Projection to Split Digits
+    let colActive = Array(w).fill(false);
+    for (let x = 0; x < w; x++) {
+      for (let y = 0; y < h; y++) {
+        if (grid[y][x]) { colActive[x] = true; break; }
+      }
+    }
+
+    let bounds = [];
+    let inBlock = false, sX = 0;
+    for (let x = 0; x < w; x++) {
+      if (colActive[x] && !inBlock) { inBlock = true; sX = x; }
+      else if (!colActive[x] && inBlock) {
+        inBlock = false;
+        if (x - sX >= 2) bounds.push({ startX: sX, endX: x - 1 });
+      }
+    }
+    if (inBlock) bounds.push({ startX: sX, endX: w - 1 });
+
+    let finalStr = "";
+    bounds.forEach(b => {
+      finalStr += decodeBGMIDigit(grid, b.startX, b.endX, h);
+    });
+
+    return parseInt(finalStr, 10);
   }
 
   async function startOCR() {
     try {
-      document.getElementById('ocrStatus').textContent = "Loading Tesseract Worker...";
-      
-      // Initialize Tesseract Engine with Digits Whitelist
-      if (!ocrWorker) {
-        ocrWorker = await Tesseract.createWorker('eng');
-        await ocrWorker.setParameters({
-          tessedit_char_whitelist: '0123456789',
-          tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE
-        });
-      }
-
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const video = document.getElementById('videoFeed');
       video.srcObject = stream;
+      document.getElementById('ocrStatus').textContent = "Active";
 
-      document.getElementById('ocrStatus').textContent = "Scanning Active...";
+      const pCan = document.getElementById('prevCanvas');
+      const pCtx = pCan.getContext('2d');
+      const procCan = document.getElementById('procCanvas');
 
-      const prevCanvas = document.getElementById('previewCanvas');
-      const prevCtx = prevCanvas.getContext('2d');
-      const procCanvas = document.getElementById('procCanvas');
+      ocrInterval = setInterval(() => {
+        if (!video.videoWidth) return;
 
-      ocrInterval = setInterval(async () => {
-        if (video.videoWidth === 0 || isProcessing) return;
+        const vx = video.videoWidth * (parseInt(document.getElementById('posX').value) / 100);
+        const vy = video.videoHeight * (parseInt(document.getElementById('posY').value) / 100);
+        const vw = video.videoWidth * (parseInt(document.getElementById('sizeW').value) / 100);
+        const vh = video.videoHeight * (parseInt(document.getElementById('sizeH').value) / 100);
 
-        isProcessing = true;
+        pCan.width = vw; pCan.height = vh;
+        pCtx.drawImage(video, vx, vy, vw, vh, 0, 0, vw, vh);
 
-        const pX = parseInt(document.getElementById('posX').value) / 100;
-        const pY = parseInt(document.getElementById('posY').value) / 100;
-        const sW = parseInt(document.getElementById('sizeW').value) / 100;
-        const sH = parseInt(document.getElementById('sizeH').value) / 100;
-
-        const vx = video.videoWidth * pX;
-        const vy = video.videoHeight * pY;
-        const vw = video.videoWidth * sW;
-        const vh = video.videoHeight * sH;
-
-        prevCanvas.width = vw;
-        prevCanvas.height = vh;
-        prevCtx.drawImage(video, vx, vy, vw, vh, 0, 0, vw, vh);
-
-        prepareCanvasForTesseract(prevCanvas, procCanvas);
-
-        const { data: { text } } = await ocrWorker.recognize(procCanvas);
-        const cleanNumber = parseInt(text.replace(/\D/g, ''), 10);
-
-        if (!isNaN(cleanNumber) && cleanNumber >= 1 && cleanNumber <= 25) {
-          document.getElementById('detectedSlot').textContent = cleanNumber;
-          if (cleanNumber !== lastActiveSlot) {
-            lastActiveSlot = cleanNumber;
-            sendData(cleanNumber);
-          }
+        let res = parseCrop(pCan, procCan);
+        if (!isNaN(res) && res >= 1 && res <= 25) {
+          document.getElementById('detectedSlot').textContent = res;
         }
-
-        isProcessing = false;
-      }, 200);
-
-    } catch (err) {
-      alert("OCR Init Error: " + err);
-      document.getElementById('ocrStatus').textContent = "Failed";
-      isProcessing = false;
+      }, 100);
+    } catch(e) {
+      alert(e);
     }
   }
 
   function stopOCR() {
-    if (ocrInterval) clearInterval(ocrInterval);
+    if(ocrInterval) clearInterval(ocrInterval);
     document.getElementById('ocrStatus').textContent = "Stopped";
-    const video = document.getElementById('videoFeed');
-    if (video.srcObject) {
-      video.srcObject.getTracks().forEach(track => track.stop());
-    }
-    isProcessing = false;
   }
-
-  init();
-  loadFromCloud();
 </script>
 </body>
 </html>
