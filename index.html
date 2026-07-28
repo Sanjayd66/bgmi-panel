@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO SYNC ADMIN - ULTRA OCR</title>
+  <title>BGMI PRO SYNC ADMIN - TESSERACT OCR</title>
+  <!-- Tesseract.js Engine CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     :root { --orange:#ff5a00; --blue:#0088ff; --green:#2ecc71; --red:#dc3545; --dark:#1a1a1a; }
     body{margin:0;font-family:'Oswald',sans-serif;background:#050505;color:#fff;overflow-x:hidden;}
@@ -37,7 +39,7 @@
 
 <div id="admin">
   <div class="header">
-    <span>SYNC DASHBOARD (STABILIZED OCR FILTER)</span>
+    <span>SYNC DASHBOARD (TESSERACT AI OCR)</span>
     <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
   </div>
 
@@ -126,9 +128,10 @@
   let activeMap = JSON.parse(localStorage.getItem('bgmi_active_map') || '[]');
   if(activeMap.length === 0) activeMap = Array(26).fill(true);
 
+  let ocrWorker = null;
   let ocrInterval = null;
+  let isProcessing = false;
   let lastActiveSlot = null;
-  let frameHistory = []; // Filter Buffer
 
   function syncToCloud() {
     const data = { teamDB, activeMap };
@@ -195,10 +198,10 @@
     document.getElementById('valSens').textContent = document.getElementById('sens').value;
   }
 
-  // --- TEMPLATE MATRIX MATCHING ENGINE (100% ACCURATE FOR BGMI FONT) ---
-  function processStabilizedOCR(srcCanvas, targetCanvas) {
+  // Pre-process canvas to high contrast B&W for Tesseract Engine
+  function prepareCanvasForTesseract(srcCanvas, targetCanvas) {
     const ctx = targetCanvas.getContext('2d');
-    const w = 40, h = 30;
+    const w = 120, h = 80;
     targetCanvas.width = w; targetCanvas.height = h;
 
     ctx.drawImage(srcCanvas, 0, 0, w, h);
@@ -206,107 +209,30 @@
     const data = imgData.data;
     const sensThreshold = parseInt(document.getElementById('sens').value);
 
-    // Binarization & Noise Cleaning
-    let grid = Array(h).fill(0).map(() => Array(w).fill(0));
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const idx = (y * w + x) * 4;
-        const avg = (data[idx] + data[idx+1] + data[idx+2]) / 3;
-        if (avg >= sensThreshold) {
-          grid[y][x] = 1;
-          data[idx] = 255; data[idx+1] = 255; data[idx+2] = 255;
-        } else {
-          grid[y][x] = 0;
-          data[idx] = 0; data[idx+1] = 0; data[idx+2] = 0;
-        }
+    for (let i = 0; i < data.length; i += 4) {
+      const avg = (data[i] + data[i+1] + data[i+2]) / 3;
+      if (avg >= sensThreshold) {
+        data[i] = 0; data[i+1] = 0; data[i+2] = 0; // Black Text
+      } else {
+        data[i] = 255; data[i+1] = 255; data[i+2] = 255; // White Background
       }
     }
     ctx.putImageData(imgData, 0, 0);
-
-    // Find Connected Columns (Digits Split)
-    let colCounts = Array(w).fill(0);
-    for (let x = 0; x < w; x++) {
-      for (let y = 0; y < h; y++) {
-        if (grid[y][x] === 1) colCounts[x]++;
-      }
-    }
-
-    let digitBlocks = [];
-    let inDigit = false, startX = 0;
-    for (let x = 0; x < w; x++) {
-      if (colCounts[x] >= 2 && !inDigit) { inDigit = true; startX = x; }
-      else if (colCounts[x] < 2 && inDigit) {
-        inDigit = false;
-        if (x - startX >= 1) digitBlocks.push({ startX, endX: x - 1 });
-      }
-    }
-    if (inDigit && (w - startX >= 1)) digitBlocks.push({ startX, endX: w - 1 });
-
-    if (digitBlocks.length === 0) return null;
-
-    // Structural Profile Matching (Guarantees no false 14, 18, 8 readings)
-    function decodeBlock(b) {
-      let bWidth = b.endX - b.startX + 1;
-      let topY = 0, botY = h - 1;
-
-      for (let y = 0; y < h; y++) {
-        let found = false;
-        for (let x = b.startX; x <= b.endX; x++) if (grid[y][x]) found = true;
-        if (found) { topY = y; break; }
-      }
-      for (let y = h - 1; y >= 0; y--) {
-        let found = false;
-        for (let x = b.startX; x <= b.endX; x++) if (grid[y][x]) found = true;
-        if (found) { botY = y; break; }
-      }
-
-      let bHeight = botY - topY + 1;
-      let aspectRatio = bWidth / bHeight;
-
-      // Rule for '1': Narrow width ratio
-      if (aspectRatio < 0.42 || bWidth <= 5) return 1;
-
-      // 3-Zone Density Check (Top, Middle, Bottom)
-      let midY = Math.floor((topY + botY) / 2);
-      let q1Y = Math.floor((topY + midY) / 2);
-      let q3Y = Math.floor((midY + botY) / 2);
-
-      let topRight = 0, topLeft = 0, botLeft = 0, bottomRight = 0, midFill = 0;
-
-      for (let x = b.startX; x <= b.endX; x++) {
-        if (grid[topY][x] || grid[q1Y][x]) {
-          if (x < b.startX + bWidth/2) topLeft++; else topRight++;
-        }
-        if (grid[midY][x]) midFill++;
-        if (grid[botY][x] || grid[q3Y][x]) {
-          if (x < b.startX + bWidth/2) botLeft++; else bottomRight++;
-        }
-      }
-
-      // Exact BGMI HUD Font Decision Tree
-      if (topLeft > 0 && topRight > 0 && botLeft > 0 && bottomRight > 0 && midFill > 0) return 8;
-      if (topLeft === 0 && topRight > 0 && botLeft > 0 && bottomRight === 0) return 2;
-      if (topLeft === 0 && topRight > 0 && botLeft === 0 && bottomRight > 0) return 3;
-      if (topLeft > 0 && topRight > 0 && botLeft === 0 && bottomRight > 0) return 4;
-      if (topLeft > 0 && topRight === 0 && botLeft === 0 && bottomRight > 0) return 5;
-      if (topLeft > 0 && topRight === 0 && botLeft > 0 && bottomRight > 0) return 6;
-      if (topRight > 0 && bottomRight > 0 && topLeft === 0) return 7;
-      if (topLeft > 0 && topRight > 0 && botLeft === 0 && bottomRight > 0) return 9;
-      if (topLeft > 0 && topRight > 0 && botLeft > 0 && bottomRight > 0 && midFill === 0) return 0;
-
-      return 1;
-    }
-
-    let resultStr = "";
-    digitBlocks.forEach(block => {
-      resultStr += decodeBlock(block);
-    });
-
-    return parseInt(resultStr, 10);
   }
 
   async function startOCR() {
     try {
+      document.getElementById('ocrStatus').textContent = "Loading Tesseract Worker...";
+      
+      // Initialize Tesseract Engine with Digits Whitelist
+      if (!ocrWorker) {
+        ocrWorker = await Tesseract.createWorker('eng');
+        await ocrWorker.setParameters({
+          tessedit_char_whitelist: '0123456789',
+          tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE
+        });
+      }
+
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const video = document.getElementById('videoFeed');
       video.srcObject = stream;
@@ -317,8 +243,10 @@
       const prevCtx = prevCanvas.getContext('2d');
       const procCanvas = document.getElementById('procCanvas');
 
-      ocrInterval = setInterval(() => {
-        if (video.videoWidth === 0) return;
+      ocrInterval = setInterval(async () => {
+        if (video.videoWidth === 0 || isProcessing) return;
+
+        isProcessing = true;
 
         const pX = parseInt(document.getElementById('posX').value) / 100;
         const pY = parseInt(document.getElementById('posY').value) / 100;
@@ -334,29 +262,26 @@
         prevCanvas.height = vh;
         prevCtx.drawImage(video, vx, vy, vw, vh, 0, 0, vw, vh);
 
-        const rawDetected = processStabilizedOCR(prevCanvas, procCanvas);
-        
-        // --- 3-FRAME TEMPORAL SMOOTHING FILTER ---
-        if (rawDetected && rawDetected >= 1 && rawDetected <= 25) {
-          frameHistory.push(rawDetected);
-          if (frameHistory.length > 3) frameHistory.shift();
+        prepareCanvasForTesseract(prevCanvas, procCanvas);
 
-          // Check if all 3 consecutive frames agree on the same number
-          const isStable = frameHistory.length === 3 && frameHistory.every(v => v === rawDetected);
+        const { data: { text } } = await ocrWorker.recognize(procCanvas);
+        const cleanNumber = parseInt(text.replace(/\D/g, ''), 10);
 
-          if (isStable) {
-            document.getElementById('detectedSlot').textContent = rawDetected;
-            if (rawDetected !== lastActiveSlot) {
-              lastActiveSlot = rawDetected;
-              sendData(rawDetected);
-            }
+        if (!isNaN(cleanNumber) && cleanNumber >= 1 && cleanNumber <= 25) {
+          document.getElementById('detectedSlot').textContent = cleanNumber;
+          if (cleanNumber !== lastActiveSlot) {
+            lastActiveSlot = cleanNumber;
+            sendData(cleanNumber);
           }
         }
-      }, 150);
+
+        isProcessing = false;
+      }, 200);
 
     } catch (err) {
-      alert("Screen capture error: " + err);
+      alert("OCR Init Error: " + err);
       document.getElementById('ocrStatus').textContent = "Failed";
+      isProcessing = false;
     }
   }
 
@@ -367,6 +292,7 @@
     if (video.srcObject) {
       video.srcObject.getTracks().forEach(track => track.stop());
     }
+    isProcessing = false;
   }
 
   init();
