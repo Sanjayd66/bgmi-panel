@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BGMI OBS DISPLAY OVERLAY</title>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Oswald', sans-serif;
+      background: transparent;
+    }
+
+    #overlay-card {
+      position: absolute;
+      bottom: 50px;
+      left: 50px;
+      display: flex;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.85);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 2px solid #fff;
+      box-shadow: 0 0 20px rgba(0,0,0,0.8);
+      transform: translateY(150px);
+      opacity: 0;
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    #overlay-card.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .slot-box {
+      font-size: 36px;
+      font-weight: bold;
+      color: #fff;
+      padding: 10px 22px;
+      min-width: 45px;
+      text-align: center;
+    }
+
+    .info-box {
+      padding: 10px 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .team-name {
+      font-size: 28px;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .sub-text {
+      font-size: 12px;
+      color: #ff5a00;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+<div id="overlay-card">
+  <div class="slot-box" id="slotNum">1</div>
+  <div class="info-box">
+    <div class="sub-text">CURRENTLY WATCHING</div>
+    <div class="team-name" id="teamName">TEAM NAME</div>
+  </div>
+</div>
+
+<script>
+  const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
+  let lastTimestamp = 0;
+
+  async function checkLiveUpdate() {
+    try {
+      const res = await fetch(LIVE_URL);
+      const data = await res.json();
+
+      if (data && data.ts && data.ts !== lastTimestamp) {
+        lastTimestamp = data.ts;
+        renderOverlay(data);
+      }
+    } catch (e) {
+      console.error("Overlay sync error:", e);
+    }
+  }
+
+  function renderOverlay(data) {
+    const card = document.getElementById('overlay-card');
+    const slotBox = document.getElementById('slotNum');
+    const teamName = document.getElementById('teamName');
+
+    // Slide down to animate update
+    card.classList.remove('show');
+
+    setTimeout(() => {
+      slotBox.textContent = data.slot;
+      slotBox.style.backgroundColor = data.sbg || '#ff5a00';
+      teamName.textContent = data.name;
+
+      // Slide up back with new data
+      card.classList.add('show');
+    }, 400);
+  }
+
+  // Poll Firebase every 500ms
+  setInterval(checkLiveUpdate, 500);
+</script>
+</body>
+</html>
