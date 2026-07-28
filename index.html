@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO SYNC ADMIN + CROP OCR</title>
+  <title>BGMI PRO SYNC ADMIN + HIGH ACCURACY OCR</title>
   <!-- Tesseract.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
@@ -26,11 +26,10 @@
     th, td { padding: 8px; text-align: left; border-bottom: 1px solid #222; }
     input { background:#000; color:#fff; border:1px solid #444; padding:5px; border-radius:4px; width: 95%; }
     
-    /* Interactive OCR Container */
     .ocr-box { background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; }
     .canvas-container { position: relative; display: inline-block; background: #000; margin-top: 10px; cursor: crosshair; }
     #selectionCanvas { position: absolute; top: 0; left: 0; z-index: 10; }
-    #previewCanvas { border: 1px solid var(--orange); display: inline-block; margin-top: 10px; background: #000; }
+    #previewCanvas, #processedCanvas { border: 1px solid var(--orange); display: inline-block; margin-top: 5px; background: #000; }
   </style>
 </head>
 <body>
@@ -39,11 +38,10 @@
 
 <div id="admin">
   <div class="header">
-    <span>SYNC DASHBOARD (CUSTOM AREA OCR)</span>
+    <span>SYNC DASHBOARD (HIGH ACCURACY OCR)</span>
     <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
   </div>
 
-  <!-- OCR Interactive Box -->
   <div class="ocr-box">
     <div>
       <button class="btn" style="background:var(--green)" onclick="startOCR()">🎥 1. SELECT SCREEN & START</button>
@@ -52,19 +50,19 @@
     </div>
 
     <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 10px;">
-      <!-- Interactive Video Feed Area -->
       <div class="canvas-container" id="container">
         <video id="videoFeed" autoplay style="display:block; max-width: 600px;"></video>
         <canvas id="selectionCanvas"></canvas>
       </div>
 
-      <!-- Live Crop Preview & Stats -->
       <div>
-        <div style="font-size: 13px; margin-bottom: 5px;"><b>Selected Region Preview:</b></div>
+        <div style="font-size: 12px; color:#aaa;">Raw Crop:</div>
         <canvas id="previewCanvas" width="120" height="60"></canvas>
+        <div style="font-size: 12px; color:var(--green); margin-top:5px;">Clean Filtered (OCR Feed):</div>
+        <canvas id="processedCanvas" width="120" height="60"></canvas>
         <div style="font-size: 13px; margin-top: 10px;">
           <div><b>Status:</b> <span id="ocrStatus">Disabled</span></div>
-          <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-size: 20px; font-weight:bold;">--</span></div>
+          <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-size: 24px; font-weight:bold;">--</span></div>
         </div>
       </div>
     </div>
@@ -112,8 +110,7 @@
   let lastActiveSlot = null;
   let ocrWorker = null;
 
-  // Selection Box Variables
-  let cropArea = { x: 20, y: 20, w: 100, h: 50 }; // Default crop
+  let cropArea = { x: 20, y: 20, w: 80, h: 40 };
   let isDragging = false;
   let startX, startY;
 
@@ -180,7 +177,7 @@
     if(activeElem) activeElem.classList.add('active-slot');
   }
 
-  // --- MOUSE SE AREA SELECT KARNE KA ENGINE ---
+  // Mouse Selection Canvas
   const selCanvas = document.getElementById('selectionCanvas');
   const selCtx = selCanvas.getContext('2d');
 
@@ -214,7 +211,33 @@
 
   selCanvas.addEventListener('mouseup', () => { isDragging = false; });
 
-  // --- OCR ENGINE ---
+  // IMAGE PRE-PROCESSING (BINARY THRESHOLD + UPSCALING FOR HIGH ACCURACY)
+  function preprocessImage(srcCanvas, targetCanvas) {
+    const ctx = targetCanvas.getContext('2d');
+    const scale = 3; // 3x Upscaling for sharp font edges
+    targetCanvas.width = srcCanvas.width * scale;
+    targetCanvas.height = srcCanvas.height * scale;
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(srcCanvas, 0, 0, targetCanvas.width, targetCanvas.height);
+
+    const imgData = ctx.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
+    const data = imgData.data;
+
+    // Convert to Pure Black & White (Thresholding)
+    for (let i = 0; i < data.length; i += 4) {
+      const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      // White text filter threshold (>= 160 is considered white text)
+      const val = avg >= 160 ? 255 : 0;
+      data[i] = val;     // Red
+      data[i + 1] = val; // Green
+      data[i + 2] = val; // Blue
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+  }
+
+  // START OCR PROCESS
   async function startOCR() {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -227,22 +250,25 @@
         drawSelection();
       };
       
-      document.getElementById('ocrStatus').textContent = "Loading OCR Engine...";
+      document.getElementById('ocrStatus').textContent = "Engine Load Ho Raha Hai...";
       
       if (!ocrWorker) {
         ocrWorker = await Tesseract.createWorker('eng');
-        await ocrWorker.setParameters({ tessedit_char_whitelist: '0123456789' });
+        await ocrWorker.setParameters({
+          tessedit_char_whitelist: '0123456789',
+          tessedit_pageseg_mode: '6', // Single uniform block of text mode
+        });
       }
 
-      document.getElementById('ocrStatus').textContent = "Scanning Selected Box...";
+      document.getElementById('ocrStatus').textContent = "Scanning Active...";
 
       const prevCanvas = document.getElementById('previewCanvas');
       const prevCtx = prevCanvas.getContext('2d');
+      const procCanvas = document.getElementById('processedCanvas');
 
       ocrInterval = setInterval(async () => {
         if (video.videoWidth === 0 || cropArea.w === 0 || cropArea.h === 0) return;
 
-        // Convert UI pixels to actual video resolution
         const scaleX = video.videoWidth / video.clientWidth;
         const scaleY = video.videoHeight / video.clientHeight;
 
@@ -255,7 +281,11 @@
         prevCanvas.height = vh;
         prevCtx.drawImage(video, vx, vy, vw, vh, 0, 0, vw, vh);
 
-        const { data: { text } } = await ocrWorker.recognize(prevCanvas);
+        // Preprocess image (Binarization + Scaling)
+        preprocessImage(prevCanvas, procCanvas);
+
+        // Scan processed high-contrast image
+        const { data: { text } } = await ocrWorker.recognize(procCanvas);
         const numbers = text.match(/\d+/g);
         
         if (numbers && numbers.length > 0) {
@@ -268,10 +298,10 @@
             }
           }
         }
-      }, 500); // Scans every 500ms
+      }, 400);
 
     } catch (err) {
-      alert("Screen Capture failed: " + err);
+      alert("Screen capture error: " + err);
       document.getElementById('ocrStatus').textContent = "Failed";
     }
   }
