@@ -2,8 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO SYNC ADMIN + HIGH ACCURACY OCR</title>
-  <!-- Tesseract.js CDN -->
+  <title>BGMI PRO SYNC ADMIN + EASY OCR</title>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     :root { --orange:#ff5a00; --blue:#0088ff; --green:#2ecc71; --red:#dc3545; --dark:#1a1a1a; }
@@ -27,9 +26,10 @@
     input { background:#000; color:#fff; border:1px solid #444; padding:5px; border-radius:4px; width: 95%; }
     
     .ocr-box { background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; }
-    .canvas-container { position: relative; display: inline-block; background: #000; margin-top: 10px; cursor: crosshair; }
-    #selectionCanvas { position: absolute; top: 0; left: 0; z-index: 10; }
-    #previewCanvas, #processedCanvas { border: 1px solid var(--orange); display: inline-block; margin-top: 5px; background: #000; }
+    .controls-grid { display: flex; gap: 15px; align-items: center; margin-top: 10px; flex-wrap: wrap; background: #222; padding: 10px; border-radius: 6px; }
+    .controls-grid label { font-size: 12px; color: #ccc; }
+    .controls-grid input[type="range"] { width: 100px; }
+    #previewCanvas, #procCanvas { border: 2px solid var(--orange); background: #000; width: 160px; height: 90px; object-fit: contain; }
   </style>
 </head>
 <body>
@@ -38,32 +38,48 @@
 
 <div id="admin">
   <div class="header">
-    <span>SYNC DASHBOARD (HIGH ACCURACY OCR)</span>
+    <span>SYNC DASHBOARD (EASY SLIDER OCR)</span>
     <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
   </div>
 
   <div class="ocr-box">
     <div>
-      <button class="btn" style="background:var(--green)" onclick="startOCR()">🎥 1. SELECT SCREEN & START</button>
-      <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP OCR</button>
-      <span style="font-size: 12px; margin-left:15px; color:#aaa;">👇 Mouse se Video Stream par Drag karke Team Number ka Box select karo:</span>
+      <button class="btn" style="background:var(--green)" onclick="startOCR()">🎥 1. SELECT GAME SCREEN</button>
+      <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP</button>
     </div>
 
-    <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 10px;">
-      <div class="canvas-container" id="container">
-        <video id="videoFeed" autoplay style="display:block; max-width: 600px;"></video>
-        <canvas id="selectionCanvas"></canvas>
-      </div>
-
+    <!-- CROP ADJUSTMENT SLIDERS -->
+    <div class="controls-grid">
       <div>
-        <div style="font-size: 12px; color:#aaa;">Raw Crop:</div>
-        <canvas id="previewCanvas" width="120" height="60"></canvas>
-        <div style="font-size: 12px; color:var(--green); margin-top:5px;">Clean Filtered (OCR Feed):</div>
-        <canvas id="processedCanvas" width="120" height="60"></canvas>
-        <div style="font-size: 13px; margin-top: 10px;">
-          <div><b>Status:</b> <span id="ocrStatus">Disabled</span></div>
-          <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-size: 24px; font-weight:bold;">--</span></div>
-        </div>
+        <label>Left/Right (X): <b id="valX">2%</b></label><br>
+        <input type="range" id="posX" min="0" max="100" value="2" oninput="updateCropParams()">
+      </div>
+      <div>
+        <label>Top/Down (Y): <b id="valY">15%</b></label><br>
+        <input type="range" id="posY" min="0" max="100" value="15" oninput="updateCropParams()">
+      </div>
+      <div>
+        <label>Box Width: <b id="valW">10%</b></label><br>
+        <input type="range" id="sizeW" min="1" max="50" value="10" oninput="updateCropParams()">
+      </div>
+      <div>
+        <label>Box Height: <b id="valH">10%</b></label><br>
+        <input type="range" id="sizeH" min="1" max="50" value="10" oninput="updateCropParams()">
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 20px; margin-top: 15px; align-items: center;">
+      <div>
+        <div style="font-size: 11px; color:#aaa;">Raw Live Capture:</div>
+        <canvas id="previewCanvas"></canvas>
+      </div>
+      <div>
+        <div style="font-size: 11px; color:var(--green);">High Contrast OCR Feed:</div>
+        <canvas id="procCanvas"></canvas>
+      </div>
+      <div style="font-size: 14px;">
+        <div><b>Status:</b> <span id="ocrStatus">Disabled</span></div>
+        <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-size: 28px; font-weight:bold;">--</span></div>
       </div>
     </div>
   </div>
@@ -90,6 +106,8 @@
   </div>
 </div>
 
+<video id="videoFeed" autoplay style="display:none;"></video>
+
 <script>
   const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
   const CONFIG_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/configData.json";
@@ -110,30 +128,20 @@
   let lastActiveSlot = null;
   let ocrWorker = null;
 
-  let cropArea = { x: 20, y: 20, w: 80, h: 40 };
-  let isDragging = false;
-  let startX, startY;
-
-  async function syncToCloud() {
+  function syncToCloud() {
     const data = { teamDB, activeMap };
-    try {
-      await fetch(CONFIG_URL, { method: "PUT", body: JSON.stringify(data) });
-      alert("PC ka data Cloud par save ho gaya!");
-    } catch(e) { alert("Sync failed!"); }
+    fetch(CONFIG_URL, { method: "PUT", body: JSON.stringify(data) }).then(() => alert("Saved!"));
   }
 
-  async function loadFromCloud() {
-    try {
-      const res = await fetch(CONFIG_URL);
-      const data = await res.json();
+  function loadFromCloud() {
+    fetch(CONFIG_URL).then(r => r.json()).then(data => {
       if(data) {
-        teamDB = data.teamDB;
-        activeMap = data.activeMap;
+        teamDB = data.teamDB; activeMap = data.activeMap;
         localStorage.setItem('bgmi_v23_db', JSON.stringify(teamDB));
         localStorage.setItem('bgmi_active_map', JSON.stringify(activeMap));
         init();
       }
-    } catch(e) { console.error("Load failed"); }
+    });
   }
 
   function init() {
@@ -177,44 +185,17 @@
     if(activeElem) activeElem.classList.add('active-slot');
   }
 
-  // Mouse Selection Canvas
-  const selCanvas = document.getElementById('selectionCanvas');
-  const selCtx = selCanvas.getContext('2d');
-
-  function drawSelection() {
-    selCtx.clearRect(0, 0, selCanvas.width, selCanvas.height);
-    selCtx.strokeStyle = '#ff5a00';
-    selCtx.lineWidth = 2;
-    selCtx.fillStyle = 'rgba(255, 90, 0, 0.2)';
-    selCtx.fillRect(cropArea.x, cropArea.y, cropArea.w, cropArea.h);
-    selCtx.strokeRect(cropArea.x, cropArea.y, cropArea.w, cropArea.h);
+  function updateCropParams() {
+    document.getElementById('valX').textContent = document.getElementById('posX').value + '%';
+    document.getElementById('valY').textContent = document.getElementById('posY').value + '%';
+    document.getElementById('valW').textContent = document.getElementById('sizeW').value + '%';
+    document.getElementById('valH').textContent = document.getElementById('sizeH').value + '%';
   }
 
-  selCanvas.addEventListener('mousedown', (e) => {
-    const rect = selCanvas.getBoundingClientRect();
-    startX = e.clientX - rect.left;
-    startY = e.clientY - rect.top;
-    isDragging = true;
-  });
-
-  selCanvas.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
-    const rect = selCanvas.getBoundingClientRect();
-    const currentX = e.clientX - rect.left;
-    const currentY = e.clientY - rect.top;
-    cropArea.x = Math.min(startX, currentX);
-    cropArea.y = Math.min(startY, currentY);
-    cropArea.w = Math.abs(currentX - startX);
-    cropArea.h = Math.abs(currentY - startY);
-    drawSelection();
-  });
-
-  selCanvas.addEventListener('mouseup', () => { isDragging = false; });
-
-  // IMAGE PRE-PROCESSING (BINARY THRESHOLD + UPSCALING FOR HIGH ACCURACY)
+  // Preprocess Image for high OCR accuracy
   function preprocessImage(srcCanvas, targetCanvas) {
     const ctx = targetCanvas.getContext('2d');
-    const scale = 3; // 3x Upscaling for sharp font edges
+    const scale = 3;
     targetCanvas.width = srcCanvas.width * scale;
     targetCanvas.height = srcCanvas.height * scale;
 
@@ -224,39 +205,27 @@
     const imgData = ctx.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
     const data = imgData.data;
 
-    // Convert to Pure Black & White (Thresholding)
     for (let i = 0; i < data.length; i += 4) {
       const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-      // White text filter threshold (>= 160 is considered white text)
-      const val = avg >= 160 ? 255 : 0;
-      data[i] = val;     // Red
-      data[i + 1] = val; // Green
-      data[i + 2] = val; // Blue
+      const val = avg >= 150 ? 255 : 0;
+      data[i] = val; data[i + 1] = val; data[i + 2] = val;
     }
-
     ctx.putImageData(imgData, 0, 0);
   }
 
-  // START OCR PROCESS
   async function startOCR() {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const video = document.getElementById('videoFeed');
       video.srcObject = stream;
 
-      video.onloadedmetadata = () => {
-        selCanvas.width = video.clientWidth;
-        selCanvas.height = video.clientHeight;
-        drawSelection();
-      };
-      
       document.getElementById('ocrStatus').textContent = "Engine Load Ho Raha Hai...";
       
       if (!ocrWorker) {
         ocrWorker = await Tesseract.createWorker('eng');
         await ocrWorker.setParameters({
           tessedit_char_whitelist: '0123456789',
-          tessedit_pageseg_mode: '6', // Single uniform block of text mode
+          tessedit_pageseg_mode: '6'
         });
       }
 
@@ -264,27 +233,27 @@
 
       const prevCanvas = document.getElementById('previewCanvas');
       const prevCtx = prevCanvas.getContext('2d');
-      const procCanvas = document.getElementById('processedCanvas');
+      const procCanvas = document.getElementById('procCanvas');
 
       ocrInterval = setInterval(async () => {
-        if (video.videoWidth === 0 || cropArea.w === 0 || cropArea.h === 0) return;
+        if (video.videoWidth === 0) return;
 
-        const scaleX = video.videoWidth / video.clientWidth;
-        const scaleY = video.videoHeight / video.clientHeight;
+        const pX = parseInt(document.getElementById('posX').value) / 100;
+        const pY = parseInt(document.getElementById('posY').value) / 100;
+        const sW = parseInt(document.getElementById('sizeW').value) / 100;
+        const sH = parseInt(document.getElementById('sizeH').value) / 100;
 
-        const vx = cropArea.x * scaleX;
-        const vy = cropArea.y * scaleY;
-        const vw = cropArea.w * scaleX;
-        const vh = cropArea.h * scaleY;
+        const vx = video.videoWidth * pX;
+        const vy = video.videoHeight * pY;
+        const vw = video.videoWidth * sW;
+        const vh = video.videoHeight * sH;
 
         prevCanvas.width = vw;
         prevCanvas.height = vh;
         prevCtx.drawImage(video, vx, vy, vw, vh, 0, 0, vw, vh);
 
-        // Preprocess image (Binarization + Scaling)
         preprocessImage(prevCanvas, procCanvas);
 
-        // Scan processed high-contrast image
         const { data: { text } } = await ocrWorker.recognize(procCanvas);
         const numbers = text.match(/\d+/g);
         
