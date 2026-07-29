@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO SYNC ADMIN - GOOGLE VISION AI OCR</title>
+  <title>BGMI PRO SYNC ADMIN - HIGH ACCURACY OCR</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     :root { --orange:#ff5a00; --blue:#0088ff; --green:#2ecc71; --red:#dc3545; --dark:#1a1a1a; }
     body{margin:0;font-family:'Oswald',sans-serif;background:#050505;color:#fff;overflow-x:hidden;}
@@ -27,8 +28,8 @@
     .ocr-box { background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; }
     .controls-grid { display: flex; gap: 15px; align-items: center; margin-top: 10px; flex-wrap: wrap; background: #222; padding: 10px; border-radius: 6px; }
     .controls-grid label { font-size: 12px; color: #ccc; }
-    .controls-grid input[type="range"], .controls-grid input[type="text"] { width: 120px; }
-    #previewCanvas { border: 2px solid var(--orange); background: #000; width: 160px; height: 90px; object-fit: contain; }
+    .controls-grid input[type="range"] { width: 120px; }
+    #previewCanvas, #processedCanvas { border: 2px solid var(--orange); background: #000; width: 160px; height: 90px; object-fit: contain; }
   </style>
 </head>
 <body>
@@ -37,43 +38,43 @@
 
 <div id="admin">
   <div class="header">
-    <span>SYNC DASHBOARD (GOOGLE VISION AI OCR)</span>
+    <span>SYNC DASHBOARD (FAST HIGH ACCURACY OCR)</span>
     <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
   </div>
 
   <div class="ocr-box">
     <div>
-      <button class="btn" style="background:var(--green)" onclick="startOCR()">🎥 1. SELECT GAME SCREEN</button>
+      <button class="btn" style="background:var(--green)" onclick="startOCR()">🎥 SELECT GAME SCREEN</button>
       <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP</button>
     </div>
 
     <div class="controls-grid">
       <div>
-        <label>Google API Key:</label><br>
-        <input type="text" id="apiKey" placeholder="AIzaSy..." onchange="saveApiKey()">
+        <label>Left/Right (X): <b id="valX">29%</b></label><br>
+        <input type="range" id="posX" min="0" max="100" value="29" oninput="updateCropParams()">
       </div>
       <div>
-        <label>Left/Right (X): <b id="valX">27%</b></label><br>
-        <input type="range" id="posX" min="0" max="100" value="27" oninput="updateCropParams()">
+        <label>Top/Down (Y): <b id="valY">80%</b></label><br>
+        <input type="range" id="posY" min="0" max="100" value="80" oninput="updateCropParams()">
       </div>
       <div>
-        <label>Top/Down (Y): <b id="valY">74%</b></label><br>
-        <input type="range" id="posY" min="0" max="100" value="74" oninput="updateCropParams()">
+        <label>Box Width: <b id="valW">9%</b></label><br>
+        <input type="range" id="sizeW" min="1" max="30" value="9" oninput="updateCropParams()">
       </div>
       <div>
-        <label>Box Width: <b id="valW">6%</b></label><br>
-        <input type="range" id="sizeW" min="1" max="30" value="6" oninput="updateCropParams()">
-      </div>
-      <div>
-        <label>Box Height: <b id="valH">7%</b></label><br>
-        <input type="range" id="sizeH" min="1" max="30" value="7" oninput="updateCropParams()">
+        <label>Box Height: <b id="valH">9%</b></label><br>
+        <input type="range" id="sizeH" min="1" max="30" value="9" oninput="updateCropParams()">
       </div>
     </div>
 
     <div style="display: flex; gap: 20px; margin-top: 15px; align-items: center;">
       <div>
-        <div style="font-size: 11px; color:#aaa;">Cropped Game Stream:</div>
+        <div style="font-size: 11px; color:#aaa;">Raw Stream Crop:</div>
         <canvas id="previewCanvas"></canvas>
+      </div>
+      <div>
+        <div style="font-size: 11px; color:#aaa;">AI Processed View:</div>
+        <canvas id="processedCanvas"></canvas>
       </div>
       <div style="font-size: 14px;">
         <div><b>Status:</b> <span id="ocrStatus">Disabled</span></div>
@@ -125,17 +126,17 @@
   let ocrInterval = null;
   let isProcessing = false;
   let lastActiveSlot = null;
+  let worker = null;
 
-  // Auto-set provided key
-  const defaultKey = "AIzaSyAmhpaiS6ShSQdOtLIj5dr98eM22TJuE9Y";
-  if (!localStorage.getItem('google_vision_key')) {
-    localStorage.setItem('google_vision_key', defaultKey);
-  }
-  document.getElementById('apiKey').value = localStorage.getItem('google_vision_key') || defaultKey;
-
-  function saveApiKey() {
-    const key = document.getElementById('apiKey').value.trim();
-    localStorage.setItem('google_vision_key', key);
+  async function initWorker() {
+    if(!worker) {
+      document.getElementById('ocrStatus').textContent = "Initializing Engine...";
+      worker = await Tesseract.createWorker('eng');
+      await worker.setParameters({
+        tessedit_char_whitelist: '0123456789',
+      });
+      document.getElementById('ocrStatus').textContent = "Engine Ready";
+    }
   }
 
   function syncToCloud() {
@@ -164,6 +165,7 @@
       grid.innerHTML += `<div class="grid-item ${on ? '' : 'disabled-slot'}" id="slot-${i}" onclick="sendData(${i})" style="border-bottom: 5px solid ${fixedColors[i]}"><h2>${i}</h2><p>${t.name}</p></div>`;
       table.innerHTML += `<tr><td><b>${i}</b></td><td><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleSlot(${i}, this.checked)" style="width:20px;"></td><td><input value="${t.name}" onchange="update(${i}, 'name', this.value)"></td><td><input value="${t.logo}" onchange="update(${i}, 'logo', this.value)"></td></tr>`;
     }
+    initWorker();
   }
 
   function toggleSlot(i, val) { activeMap[i] = val; localStorage.setItem('bgmi_active_map', JSON.stringify(activeMap)); init(); }
@@ -202,59 +204,36 @@
     document.getElementById('valH').textContent = document.getElementById('sizeH').value + '%';
   }
 
-  async function processGoogleVisionOCR(canvas) {
-    const apiKey = document.getElementById('apiKey').value.trim();
-    if (!apiKey) {
-      document.getElementById('ocrStatus').textContent = "Enter API Key!";
-      return null;
+  function processImageForOCR(sourceCanvas, targetCanvas) {
+    const ctx = targetCanvas.getContext('2d');
+    targetCanvas.width = sourceCanvas.width;
+    targetCanvas.height = sourceCanvas.height;
+
+    ctx.drawImage(sourceCanvas, 0, 0);
+    const imgData = ctx.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
+    const d = imgData.data;
+
+    // High Contrast Grayscale conversion for Game Fonts
+    for (let i = 0; i < d.length; i += 4) {
+      let v = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114);
+      v = v > 150 ? 255 : 0; // High contrast threshold
+      d[i] = v; d[i + 1] = v; d[i + 2] = v;
     }
-
-    const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-
-    const endpoint = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
-    const requestBody = {
-      requests: [
-        {
-          image: { content: base64Image },
-          features: [{ type: "TEXT_DETECTION" }]
-        }
-      ]
-    };
-
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
-      });
-
-      const data = await response.json();
-      if (data.responses && data.responses[0].textAnnotations) {
-        const fullText = data.responses[0].textAnnotations[0].description;
-        const cleanNumber = parseInt(fullText.replace(/\D/g, ''), 10);
-        return cleanNumber;
-      }
-    } catch (err) {
-      console.error("Google Vision Error:", err);
-    }
-    return null;
+    ctx.putImageData(imgData, 0, 0);
   }
 
   async function startOCR() {
-    const apiKey = document.getElementById('apiKey').value.trim();
-    if (!apiKey) {
-      alert("Pehle Google Vision API Key daalo UI me!");
-      return;
-    }
+    await initWorker();
 
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const video = document.getElementById('videoFeed');
       video.srcObject = stream;
 
-      document.getElementById('ocrStatus').textContent = "Scanning Active (Google AI)...";
+      document.getElementById('ocrStatus').textContent = "Scanning Active...";
 
       const prevCanvas = document.getElementById('previewCanvas');
+      const procCanvas = document.getElementById('processedCanvas');
       const prevCtx = prevCanvas.getContext('2d');
 
       ocrInterval = setInterval(async () => {
@@ -276,7 +255,11 @@
         prevCanvas.height = vh;
         prevCtx.drawImage(video, vx, vy, vw, vh, 0, 0, vw, vh);
 
-        const detectedSlot = await processGoogleVisionOCR(prevCanvas);
+        processImageForOCR(prevCanvas, procCanvas);
+
+        const ret = await worker.recognize(procCanvas);
+        const text = ret.data.text.trim();
+        const detectedSlot = parseInt(text.replace(/\D/g, ''), 10);
 
         if (detectedSlot && detectedSlot >= 1 && detectedSlot <= 25) {
           document.getElementById('detectedSlot').textContent = detectedSlot;
@@ -287,7 +270,7 @@
         }
 
         isProcessing = false;
-      }, 400);
+      }, 350);
 
     } catch (err) {
       alert("Screen Capture Error: " + err);
