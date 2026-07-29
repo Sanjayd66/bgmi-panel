@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO SYNC ADMIN - HIGH ACCURACY OCR</title>
+  <title>BGMI PRO SYNC ADMIN - NOISE FILTER OCR</title>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     :root { --orange:#ff5a00; --blue:#0088ff; --green:#2ecc71; --red:#dc3545; --dark:#1a1a1a; }
@@ -38,7 +38,7 @@
 
 <div id="admin">
   <div class="header">
-    <span>SYNC DASHBOARD (FAST HIGH ACCURACY OCR)</span>
+    <span>SYNC DASHBOARD (HIGH ACCURACY OCR)</span>
     <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
   </div>
 
@@ -50,20 +50,24 @@
 
     <div class="controls-grid">
       <div>
-        <label>Left/Right (X): <b id="valX">29%</b></label><br>
-        <input type="range" id="posX" min="0" max="100" value="29" oninput="updateCropParams()">
+        <label>Left/Right (X): <b id="valX">31%</b></label><br>
+        <input type="range" id="posX" min="0" max="100" value="31" oninput="updateCropParams()">
       </div>
       <div>
-        <label>Top/Down (Y): <b id="valY">80%</b></label><br>
-        <input type="range" id="posY" min="0" max="100" value="80" oninput="updateCropParams()">
+        <label>Top/Down (Y): <b id="valY">79%</b></label><br>
+        <input type="range" id="posY" min="0" max="100" value="79" oninput="updateCropParams()">
       </div>
       <div>
-        <label>Box Width: <b id="valW">9%</b></label><br>
-        <input type="range" id="sizeW" min="1" max="30" value="9" oninput="updateCropParams()">
+        <label>Box Width: <b id="valW">6%</b></label><br>
+        <input type="range" id="sizeW" min="1" max="30" value="6" oninput="updateCropParams()">
       </div>
       <div>
         <label>Box Height: <b id="valH">9%</b></label><br>
         <input type="range" id="sizeH" min="1" max="30" value="9" oninput="updateCropParams()">
+      </div>
+      <div>
+        <label>Threshold/Cutoff: <b id="valThresh">180</b></label><br>
+        <input type="range" id="threshold" min="100" max="240" value="180" oninput="updateCropParams()">
       </div>
     </div>
 
@@ -134,6 +138,7 @@
       worker = await Tesseract.createWorker('eng');
       await worker.setParameters({
         tessedit_char_whitelist: '0123456789',
+        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_WORD // Forces Tesseract to evaluate image as single line/word
       });
       document.getElementById('ocrStatus').textContent = "Engine Ready";
     }
@@ -202,22 +207,34 @@
     document.getElementById('valY').textContent = document.getElementById('posY').value + '%';
     document.getElementById('valW').textContent = document.getElementById('sizeW').value + '%';
     document.getElementById('valH').textContent = document.getElementById('sizeH').value + '%';
+    document.getElementById('valThresh').textContent = document.getElementById('threshold').value;
   }
 
   function processImageForOCR(sourceCanvas, targetCanvas) {
     const ctx = targetCanvas.getContext('2d');
-    targetCanvas.width = sourceCanvas.width;
-    targetCanvas.height = sourceCanvas.height;
+    
+    // Add 12px padding around text so edges don't touch bounding box
+    const padding = 12;
+    targetCanvas.width = sourceCanvas.width + (padding * 2);
+    targetCanvas.height = sourceCanvas.height + (padding * 2);
 
-    ctx.drawImage(sourceCanvas, 0, 0);
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
+
+    ctx.drawImage(sourceCanvas, padding, padding);
+
     const imgData = ctx.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
     const d = imgData.data;
+    const threshVal = parseInt(document.getElementById('threshold').value, 10);
 
-    // High Contrast Grayscale conversion for Game Fonts
+    // Advanced thresholding to isolate digit pixels from gradients
     for (let i = 0; i < d.length; i += 4) {
-      let v = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114);
-      v = v > 150 ? 255 : 0; // High contrast threshold
-      d[i] = v; d[i + 1] = v; d[i + 2] = v;
+      let avg = (d[i] * 0.2126 + d[i + 1] * 0.7152 + d[i + 2] * 0.0722);
+      if (avg > threshVal) { 
+        d[i] = 255; d[i + 1] = 255; d[i + 2] = 255; 
+      } else {
+        d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; 
+      }
     }
     ctx.putImageData(imgData, 0, 0);
   }
