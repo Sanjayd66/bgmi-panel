@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI DYNAMIC TEAM OVERLAY</title>
+  <title>BGMI CUSTOM STEPPED OVERLAY</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Teko:wght@600;700&display=swap');
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    
+
     body {
       background: transparent;
       overflow: hidden;
@@ -16,88 +16,88 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: 'Oswald', sans-serif;
+      font-family: 'Teko', sans-serif;
     }
 
-    /* Main Overlay Card Container */
-    #team-card {
+    /* Outer Wrapper for Animation */
+    #layout-container {
+      position: relative;
       display: flex;
-      align-items: center;
-      background: linear-gradient(90deg, rgba(15, 15, 25, 0.95) 0%, rgba(30, 30, 45, 0.85) 100%);
-      border-left: 6px solid #ff5a00;
-      border-radius: 6px;
-      padding: 6px 18px 6px 8px;
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7), inset 0 0 10px rgba(255, 255, 255, 0.05);
-      transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      align-items: flex-start;
       opacity: 0;
-      transform: translateY(20px) scale(0.95);
-      backdrop-filter: blur(4px);
+      transform: translateY(15px) scale(0.95);
+      transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      filter: drop-shadow(0px 5px 10px rgba(0,0,0,0.6));
     }
 
-    #team-card.active {
+    #layout-container.active {
       opacity: 1;
       transform: translateY(0) scale(1);
     }
 
-    /* Team Logo Area */
+    /* Left Square Block (Logo / Slot Box) */
     .logo-box {
-      width: 50px;
-      height: 50px;
+      width: 110px;
+      height: 110px;
+      background: #4a332a; /* Default color fallback */
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-right: 12px;
-      background: rgba(0, 0, 0, 0.4);
-      border-radius: 4px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      position: relative;
+      z-index: 2;
       overflow: hidden;
-      flex-shrink: 0;
     }
 
     .logo-box img {
-      max-width: 100%;
-      max-height: 100%;
+      width: 85%;
+      height: 85%;
       object-fit: contain;
     }
 
-    /* Team Text Info Area */
-    .info-box {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }
-
-    .slot-tag {
-      font-size: 11px;
-      color: #ff5a00;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
+    /* Fallback Slot Text if Logo missing */
+    .slot-fallback {
+      color: #ffffff;
+      font-size: 70px;
       font-weight: 700;
       line-height: 1;
-      margin-bottom: 2px;
+    }
+
+    /* Right Slanted Text Bar */
+    .name-bar {
+      height: 52px;
+      background: #4a332a; /* Default color fallback */
+      padding: 0 35px 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      clip-path: polygon(0 0, 85% 0, 100% 100%, 0 100%);
+      margin-left: -2px; /* Smooth edge overlap */
+      z-index: 1;
     }
 
     .team-name {
-      font-size: 26px;
       color: #ffffff;
-      text-transform: uppercase;
+      font-size: 38px;
       font-weight: 700;
-      letter-spacing: 1px;
-      line-height: 1;
-      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
       white-space: nowrap;
+      line-height: 1;
     }
   </style>
 </head>
 <body>
 
-  <div id="team-card">
-    <div class="logo-box" id="logoContainer">
-      <img id="teamLogo" src="" alt="Logo">
+  <div id="layout-container">
+    <!-- Left Block for Logo / 20 -->
+    <div class="logo-box" id="logoBox">
+      <img id="teamLogo" src="" alt="Logo" style="display:none;">
+      <span id="slotText" class="slot-fallback">--</span>
     </div>
-    <div class="info-box">
-      <div class="slot-tag" id="slotTag">SLOT --</div>
-      <div class="team-name" id="teamName">TEAM NAME</div>
+
+    <!-- Right Bar for Team Name -->
+    <div class="name-bar" id="nameBar">
+      <span class="team-name" id="teamName">TEAM</span>
     </div>
   </div>
 
@@ -112,43 +112,45 @@
 
       if (data && data.ts && data.ts !== lastTimestamp) {
         lastTimestamp = data.ts;
-        updateCard(data);
+        updateDisplay(data);
       }
     } catch (e) {
       console.error("Sync Error:", e);
     }
   }
 
-  function updateCard(data) {
-    const card = document.getElementById('team-card');
-    const nameEl = document.getElementById('teamName');
-    const slotEl = document.getElementById('slotTag');
-    const logoEl = document.getElementById('teamLogo');
-    const logoContainer = document.getElementById('logoContainer');
+  function updateDisplay(data) {
+    const container = document.getElementById('layout-container');
+    const logoBox = document.getElementById('logoBox');
+    const nameBar = document.getElementById('nameBar');
+    const teamLogo = document.getElementById('teamLogo');
+    const slotText = document.getElementById('slotText');
+    const teamName = document.getElementById('teamName');
 
     // Smooth transition
-    card.classList.remove('active');
+    container.classList.remove('active');
 
     setTimeout(() => {
-      // 1. Team Name & Slot Update
-      nameEl.textContent = data.name || `TEAM ${data.slot || ''}`;
-      slotEl.textContent = `SLOT ${data.slot || '--'}`;
+      // 1. Team Name Update
+      teamName.textContent = data.name || `TEAM ${data.slot || ''}`;
 
-      // 2. Dynamic Accent Color (Based on Slot)
-      if (data.sbg) {
-        card.style.borderLeftColor = data.sbg;
-        slotEl.style.color = data.sbg;
-      }
+      // 2. Background Color Update (Admin Panel Slot Color)
+      const themeColor = data.sbg || '#4a332a';
+      logoBox.style.backgroundColor = themeColor;
+      nameBar.style.backgroundColor = themeColor;
 
-      // 3. Logo Handling
+      // 3. Logo / Slot Number Display
       if (data.gfx && data.gfx.trim() !== '') {
-        logoEl.src = data.gfx;
-        logoContainer.style.display = 'flex';
+        teamLogo.src = data.gfx;
+        teamLogo.style.display = 'block';
+        slotText.style.display = 'none';
       } else {
-        logoContainer.style.display = 'none'; // Logo missing ho toh hide ho jaye
+        teamLogo.style.display = 'none';
+        slotText.textContent = data.slot || '--';
+        slotText.style.display = 'block';
       }
 
-      card.classList.add('active');
+      container.classList.add('active');
     }, 200);
   }
 
