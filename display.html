@@ -2,9 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO DISPLAY PANEL</title>
+  <title>BGMI DYNAMIC TEAM OVERLAY</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&display=swap');
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    
     body {
       background: transparent;
       overflow: hidden;
@@ -13,37 +16,89 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      font-family: 'Oswald', sans-serif;
     }
 
-    #gfx-container {
-      position: relative;
-      max-width: 100%;
-      max-height: 100%;
+    /* Main Overlay Card Container */
+    #team-card {
+      display: flex;
+      align-items: center;
+      background: linear-gradient(90deg, rgba(15, 15, 25, 0.95) 0%, rgba(30, 30, 45, 0.85) 100%);
+      border-left: 6px solid #ff5a00;
+      border-radius: 6px;
+      padding: 6px 18px 6px 8px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7), inset 0 0 10px rgba(255, 255, 255, 0.05);
+      transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      opacity: 0;
+      transform: translateY(20px) scale(0.95);
+      backdrop-filter: blur(4px);
+    }
+
+    #team-card.active {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+
+    /* Team Logo Area */
+    .logo-box {
+      width: 50px;
+      height: 50px;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: opacity 0.3s ease, transform 0.3s ease;
-      opacity: 0;
-      transform: scale(0.95);
+      margin-right: 12px;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+      flex-shrink: 0;
     }
 
-    #gfx-container.active {
-      opacity: 1;
-      transform: scale(1);
-    }
-
-    #displayGfx {
+    .logo-box img {
       max-width: 100%;
-      max-height: 100vh;
+      max-height: 100%;
       object-fit: contain;
-      display: block;
+    }
+
+    /* Team Text Info Area */
+    .info-box {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .slot-tag {
+      font-size: 11px;
+      color: #ff5a00;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 2px;
+    }
+
+    .team-name {
+      font-size: 26px;
+      color: #ffffff;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 1px;
+      line-height: 1;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+      white-space: nowrap;
     }
   </style>
 </head>
 <body>
 
-  <div id="gfx-container">
-    <img id="displayGfx" src="" alt="Live GFX">
+  <div id="team-card">
+    <div class="logo-box" id="logoContainer">
+      <img id="teamLogo" src="" alt="Logo">
+    </div>
+    <div class="info-box">
+      <div class="slot-tag" id="slotTag">SLOT --</div>
+      <div class="team-name" id="teamName">TEAM NAME</div>
+    </div>
   </div>
 
 <script>
@@ -57,38 +112,47 @@
 
       if (data && data.ts && data.ts !== lastTimestamp) {
         lastTimestamp = data.ts;
-        updateDisplay(data.gfx);
+        updateCard(data);
       }
     } catch (e) {
       console.error("Sync Error:", e);
     }
   }
 
-  function updateDisplay(imageUrl) {
-    const container = document.getElementById('gfx-container');
-    const img = document.getElementById('displayGfx');
+  function updateCard(data) {
+    const card = document.getElementById('team-card');
+    const nameEl = document.getElementById('teamName');
+    const slotEl = document.getElementById('slotTag');
+    const logoEl = document.getElementById('teamLogo');
+    const logoContainer = document.getElementById('logoContainer');
 
-    if (imageUrl && imageUrl.trim() !== '') {
-      // Hide temporarily for smooth transition
-      container.classList.remove('active');
+    // Smooth transition
+    card.classList.remove('active');
 
-      setTimeout(() => {
-        img.src = imageUrl;
-        img.onload = () => {
-          container.classList.add('active');
-        };
-        img.onerror = () => {
-          // If image fails to load, hide container gracefully
-          container.classList.remove('active');
-        };
-      }, 200);
-    } else {
-      // If no image URL is provided, hide overlay
-      container.classList.remove('active');
-    }
+    setTimeout(() => {
+      // 1. Team Name & Slot Update
+      nameEl.textContent = data.name || `TEAM ${data.slot || ''}`;
+      slotEl.textContent = `SLOT ${data.slot || '--'}`;
+
+      // 2. Dynamic Accent Color (Based on Slot)
+      if (data.sbg) {
+        card.style.borderLeftColor = data.sbg;
+        slotEl.style.color = data.sbg;
+      }
+
+      // 3. Logo Handling
+      if (data.gfx && data.gfx.trim() !== '') {
+        logoEl.src = data.gfx;
+        logoContainer.style.display = 'flex';
+      } else {
+        logoContainer.style.display = 'none'; // Logo missing ho toh hide ho jaye
+      }
+
+      card.classList.add('active');
+    }, 200);
   }
 
-  // Poll Firebase every 1 second for instant update
+  // Poll Firebase every 1 second
   setInterval(checkLiveData, 1000);
   checkLiveData();
 </script>
