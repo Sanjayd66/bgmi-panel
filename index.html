@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO SYNC ADMIN - GOOGLE VISION AI</title>
+  <title>BGMI PRO SYNC ADMIN - HIGH ACCURACY OCR</title>
   <style>
     :root { --orange:#ff5a00; --blue:#0088ff; --green:#2ecc71; --red:#dc3545; --dark:#1a1a1a; }
     body{margin:0;font-family:'Oswald',sans-serif;background:#050505;color:#fff;overflow-x:hidden;}
@@ -10,7 +10,7 @@
     .header { background:#000; border-left:5px solid var(--orange); padding:15px; font-size:20px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center; }
     .grid-container { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
     .grid-item { background: var(--dark); border: 2px solid #333; border-radius: 8px; padding: 15px 5px; text-align: center; cursor: pointer; transition: 0.2s; position: relative; }
-    .grid-item.active-slot { border-color: white; box-shadow: 0 0 15px rgba(255,255,255,0.5); }
+    .grid-item.active-slot { border-color: white; box-shadow: 0 0 15px rgba(255,255,255,0.8); }
     .grid-item.disabled-slot { opacity: 0.2; pointer-events: none; }
     .grid-item h2 { margin: 0; font-size: 32px; color: #fff; }
     .grid-item p { margin: 5px 0 0 0; font-size: 12px; color: #aaa; text-transform: uppercase; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -22,12 +22,13 @@
     #showSettings { display:none; position:fixed; top:10px; right:10px; z-index:1000; background: var(--green); }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
     th, td { padding: 8px; text-align: left; border-bottom: 1px solid #222; }
-    input { background:#000; color:#fff; border:1px solid #444; padding:5px; border-radius:4px; width: 95%; }
+    input[type="text"], input:not([type]) { background:#000; color:#fff; border:1px solid #444; padding:5px; border-radius:4px; width: 95%; }
     
+    /* OCR Control Section Styles */
     .ocr-box { background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; }
-    .controls-grid { display: flex; gap: 15px; align-items: center; margin-top: 10px; flex-wrap: wrap; background: #222; padding: 10px; border-radius: 6px; }
+    .controls-grid { display: flex; gap: 15px; margin-top: 10px; background: #222; padding: 10px; border-radius: 6px; flex-wrap: wrap; align-items: center; }
     .controls-grid label { font-size: 12px; color: #ccc; }
-    .controls-grid input[type="range"], .controls-grid input[type="text"] { width: 120px; }
+    .controls-grid input[type="range"] { width: 120px; }
     #previewCanvas { border: 2px solid var(--orange); background: #000; width: 160px; height: 90px; object-fit: contain; }
   </style>
 </head>
@@ -37,28 +38,27 @@
 
 <div id="admin">
   <div class="header">
-    <span>SYNC DASHBOARD (GOOGLE VISION AI POWERED)</span>
+    <span>SYNC DASHBOARD (PC & MOBILE + AUTO OCR)</span>
     <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
   </div>
 
-  <div class="ocr-box">
-    <div>
+  <!-- OCR Control Panel -->
+  <div class="ocr-box settings-area">
+    <div style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <label style="font-size: 12px;"><b>OCR Server URL:</b></label>
+      <input type="text" id="serverUrl" value="http://127.0.0.1:5000" style="width: 250px; color:#0f0;">
       <button class="btn" style="background:var(--green)" onclick="startOCR()">🎥 SELECT GAME SCREEN</button>
-      <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP</button>
+      <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP OCR</button>
     </div>
 
     <div class="controls-grid">
-      <div>
-        <label>Google API Key:</label><br>
-        <input type="text" id="apiKey" value="AIzaSyAmhpaiS6ShSQdOtLIj5dr98eM22TJuE9Y">
-      </div>
       <div>
         <label>Left/Right (X): <b id="valX">31%</b></label><br>
         <input type="range" id="posX" min="0" max="100" value="31" oninput="updateCropParams()">
       </div>
       <div>
-        <label>Top/Down (Y): <b id="valY">79%</b></label><br>
-        <input type="range" id="posY" min="0" max="100" value="79" oninput="updateCropParams()">
+        <label>Top/Down (Y): <b id="valY">59%</b></label><br>
+        <input type="range" id="posY" min="0" max="100" value="59" oninput="updateCropParams()">
       </div>
       <div>
         <label>Box Width: <b id="valW">6%</b></label><br>
@@ -76,7 +76,7 @@
         <canvas id="previewCanvas"></canvas>
       </div>
       <div style="font-size: 14px;">
-        <div><b>Status:</b> <span id="ocrStatus">Disabled</span></div>
+        <div><b>OCR Status:</b> <span id="ocrStatus">Disabled</span></div>
         <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-size: 32px; font-weight:bold;">--</span></div>
       </div>
     </div>
@@ -85,7 +85,7 @@
   <div class="grid-container" id="controlGrid"></div>
 
   <div class="settings-area">
-    <textarea id="import-area" placeholder="1 | TEAM NAME"></textarea>
+    <textarea id="import-area" placeholder="1 | TEAM NAME | IMAGE_URL (Optional)"></textarea>
     <div class="btn-group">
         <button class="btn" style="background:#333" onclick="importSlots()">IMPORT</button>
         <button class="btn" style="background:var(--orange)" onclick="syncToCloud()">☁️ SYNC TO CLOUD (SAVE)</button>
@@ -97,7 +97,7 @@
   <div class="settings-panel settings-area">
     <table>
       <thead>
-        <tr><th>SLOT</th><th>ACTIVE</th><th>TEAM NAME</th><th>LOGO</th></tr>
+        <tr><th>SLOT</th><th>ACTIVE</th><th>TEAM NAME (ADMIN INFO)</th><th>GFX / IMAGE LINK</th></tr>
       </thead>
       <tbody id="configTable"></tbody>
     </table>
@@ -126,20 +126,27 @@
   let isProcessing = false;
   let lastActiveSlot = null;
 
-  function syncToCloud() {
+  async function syncToCloud() {
     const data = { teamDB, activeMap };
-    fetch(CONFIG_URL, { method: "PUT", body: JSON.stringify(data) }).then(() => alert("Saved!"));
+    try {
+      await fetch(CONFIG_URL, { method: "PUT", body: JSON.stringify(data) });
+      alert("PC ka data Cloud par save ho gaya!");
+    } catch(e) { alert("Sync failed!"); }
   }
 
-  function loadFromCloud() {
-    fetch(CONFIG_URL).then(r => r.json()).then(data => {
+  async function loadFromCloud() {
+    try {
+      const res = await fetch(CONFIG_URL);
+      const data = await res.json();
       if(data) {
-        teamDB = data.teamDB; activeMap = data.activeMap;
+        teamDB = data.teamDB;
+        activeMap = data.activeMap;
         localStorage.setItem('bgmi_v23_db', JSON.stringify(teamDB));
         localStorage.setItem('bgmi_active_map', JSON.stringify(activeMap));
         init();
+        alert("Data Phone mein load ho gaya!");
       }
-    });
+    } catch(e) { alert("Load failed!"); }
   }
 
   function init() {
@@ -147,10 +154,10 @@
     const table = document.getElementById('configTable');
     grid.innerHTML = ""; table.innerHTML = "";
     for(let i=1; i<=25; i++) {
-      if(!teamDB[i]) teamDB[i] = { name: `TEAM ${i}`, logo: `${i}` };
+      if(!teamDB[i]) teamDB[i] = { name: `TEAM ${i}`, gfx: '' };
       const t = teamDB[i]; const on = activeMap[i];
       grid.innerHTML += `<div class="grid-item ${on ? '' : 'disabled-slot'}" id="slot-${i}" onclick="sendData(${i})" style="border-bottom: 5px solid ${fixedColors[i]}"><h2>${i}</h2><p>${t.name}</p></div>`;
-      table.innerHTML += `<tr><td><b>${i}</b></td><td><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleSlot(${i}, this.checked)" style="width:20px;"></td><td><input value="${t.name}" onchange="update(${i}, 'name', this.value)"></td><td><input value="${t.logo}" onchange="update(${i}, 'logo', this.value)"></td></tr>`;
+      table.innerHTML += `<tr><td><b>${i}</b></td><td><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleSlot(${i}, this.checked)" style="width:20px;"></td><td><input value="${t.name || ''}" placeholder="Team Name" onchange="update(${i}, 'name', this.value)"></td><td><input value="${t.gfx || ''}" placeholder="Image Direct Link" onchange="update(${i}, 'gfx', this.value)"></td></tr>`;
     }
   }
 
@@ -160,8 +167,14 @@
   function importSlots(){
     const text=document.getElementById('import-area').value;
     text.split('\n').forEach(line=>{
-      const m=line.match(/(\d+)\s*[|•-]\s*(.+)/);
-      if(m){ const slot = parseInt(m[1]); if(slot>=1 && slot<=25) teamDB[slot].name = m[2].trim(); }
+      const parts = line.split(/[|•-]/);
+      if(parts.length >= 2){
+        const slot = parseInt(parts[0].trim());
+        if(slot>=1 && slot<=25) {
+          teamDB[slot].name = parts[1].trim();
+          if(parts[2]) teamDB[slot].gfx = parts[2].trim();
+        }
+      }
     });
     localStorage.setItem('bgmi_v23_db',JSON.stringify(teamDB)); init();
   }
@@ -174,9 +187,9 @@
   function sendData(slot) {
     if(!activeMap[slot]) return;
     const t = teamDB[slot];
-    const payload = {slot, name:t.name, logo:t.logo, sbg:fixedColors[slot], ts:Date.now()};
+    const payload = {slot, name: t.name, gfx: t.gfx || '', sbg: fixedColors[slot], ts: Date.now()};
     fetch(LIVE_URL, {method:"PUT", body:JSON.stringify(payload)});
-    document.getElementById('liveStatus').textContent = `LIVE: SLOT ${slot} - ${t.name}`;
+    document.getElementById('liveStatus').textContent = `LIVE: ${t.name}`;
     
     document.querySelectorAll('.grid-item').forEach(el => el.classList.remove('active-slot'));
     const activeElem = document.getElementById(`slot-${slot}`);
@@ -190,61 +203,18 @@
     document.getElementById('valH').textContent = document.getElementById('sizeH').value + '%';
   }
 
-  async function callGoogleVisionAPI(canvas) {
-    const key = document.getElementById('apiKey').value.trim();
-    if(!key) return null;
-
-    // Convert canvas image to Base64
-    const base64Image = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
-
-    const url = `https://vision.googleapis.com/v1/images:annotate?key=${key}`;
-    const bodyData = {
-      requests: [{
-        image: { content: base64Image },
-        features: [{ type: "TEXT_DETECTION" }]
-      }]
-    };
-
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyData)
-      });
-      const data = await res.json();
-      
-      if(data.error) {
-        document.getElementById('ocrStatus').textContent = "API Error: " + data.error.message;
-        return null;
-      }
-
-      if(data.responses && data.responses[0].textAnnotations && data.responses[0].textAnnotations.length > 0) {
-        const fullText = data.responses[0].textAnnotations[0].description;
-        const num = parseInt(fullText.replace(/\D/g, ''), 10);
-        return num;
-      }
-    } catch(e) {
-      console.error(e);
-      document.getElementById('ocrStatus').textContent = "Network / CORS Error!";
-    }
-    return null;
-  }
-
   async function startOCR() {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const video = document.getElementById('videoFeed');
       video.srcObject = stream;
-
-      document.getElementById('ocrStatus').textContent = "Google Vision Scanning Active...";
+      document.getElementById('ocrStatus').textContent = "OCR Active...";
 
       const prevCanvas = document.getElementById('previewCanvas');
       const prevCtx = prevCanvas.getContext('2d');
 
-      // Google Vision delay: 500ms to avoid quota limits
       ocrInterval = setInterval(async () => {
         if (video.videoWidth === 0 || isProcessing) return;
-
         isProcessing = true;
 
         const pX = parseInt(document.getElementById('posX').value) / 100;
@@ -252,38 +222,43 @@
         const sW = parseInt(document.getElementById('sizeW').value) / 100;
         const sH = parseInt(document.getElementById('sizeH').value) / 100;
 
-        const vx = video.videoWidth * pX;
-        const vy = video.videoHeight * pY;
-        const vw = video.videoWidth * sW;
-        const vh = video.videoHeight * sH;
+        const vx = video.videoWidth * pX, vy = video.videoHeight * pY;
+        const vw = video.videoWidth * sW, vh = video.videoHeight * sH;
 
-        prevCanvas.width = vw;
-        prevCanvas.height = vh;
+        prevCanvas.width = vw; prevCanvas.height = vh;
         prevCtx.drawImage(video, vx, vy, vw, vh, 0, 0, vw, vh);
 
-        const detectedSlot = await callGoogleVisionAPI(prevCanvas);
-
-        if (detectedSlot && detectedSlot >= 1 && detectedSlot <= 25) {
-          document.getElementById('detectedSlot').textContent = detectedSlot;
-          document.getElementById('ocrStatus').textContent = "Google Vision Active";
-          if (detectedSlot !== lastActiveSlot) {
-            lastActiveSlot = detectedSlot;
-            sendData(detectedSlot);
-          }
+        const base64Img = prevCanvas.toDataURL('image/jpeg', 0.85);
+        let serverEndpoint = document.getElementById('serverUrl').value.trim();
+        if(!serverEndpoint.endsWith('/ocr')) {
+          serverEndpoint = serverEndpoint.replace(/\/$/, "") + '/ocr';
         }
 
+        try {
+          const res = await fetch(serverEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: base64Img })
+          });
+          const data = await res.json();
+          if (data.success && data.slot) {
+            const detectedSlot = parseInt(data.slot);
+            document.getElementById('detectedSlot').textContent = detectedSlot;
+            if (detectedSlot !== lastActiveSlot && detectedSlot >= 1 && detectedSlot <= 25 && activeMap[detectedSlot]) {
+              lastActiveSlot = detectedSlot;
+              sendData(detectedSlot);
+            }
+          }
+        } catch (e) {
+          document.getElementById('ocrStatus').textContent = "Server Offline";
+        }
         isProcessing = false;
-      }, 500);
-
-    } catch (err) {
-      alert("Screen Capture Error: " + err);
-      document.getElementById('ocrStatus').textContent = "Failed";
-      isProcessing = false;
-    }
+      }, 350);
+    } catch (err) { alert("Screen Capture Error: " + err); }
   }
 
-  function stopOCR() {
-    if (ocrInterval) clearInterval(ocrInterval);
+  function stopOCR() { 
+    if (ocrInterval) clearInterval(ocrInterval); 
     document.getElementById('ocrStatus').textContent = "Stopped";
     const video = document.getElementById('videoFeed');
     if (video.srcObject) {
