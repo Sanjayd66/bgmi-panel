@@ -2,8 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO SYNC ADMIN - HIGH ACCURACY OCR</title>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <title>BGMI PRO SYNC ADMIN - EASYOCR SERVER CONNECTED</title>
   <style>
     :root { --orange:#ff5a00; --blue:#0088ff; --green:#2ecc71; --red:#dc3545; --dark:#1a1a1a; }
     body{margin:0;font-family:'Oswald',sans-serif;background:#050505;color:#fff;overflow-x:hidden;}
@@ -39,7 +38,7 @@
 
 <div id="admin">
   <div class="header">
-    <span>SYNC DASHBOARD (AUTO OCR FIXED)</span>
+    <span>SYNC DASHBOARD (PYTHON EASYOCR CONNECTED)</span>
     <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
   </div>
 
@@ -50,10 +49,11 @@
         <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP OCR</button>
       </div>
       <div>
-        <span style="font-size: 11px; color:#888;">PROCESSED PREVIEW:</span><br>
+        <span style="font-size: 11px; color:#888;">CROP PREVIEW:</span><br>
         <canvas id="cropCanvas" width="200" height="100"></canvas>
       </div>
       <div style="font-size: 13px;">
+        <div><b>OCR Engine:</b> <span style="color:var(--blue)">Python EasyOCR Server</span></div>
         <div><b>OCR Status:</b> <span id="ocrStatus">Disabled</span></div>
         <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-weight:bold;">--</span></div>
       </div>
@@ -93,6 +93,7 @@
 <script>
   const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
   const CONFIG_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/configData.json";
+  const PYTHON_OCR_URL = "http://127.0.0.1:5000/ocr"; // Connected to CMD EasyOCR Server
 
   const fixedColors = {
     1: '#10449e', 2: '#1b5e20', 3: '#c62828', 4: '#e65100', 5: '#6a1b9a',
@@ -108,7 +109,7 @@
 
   let ocrInterval = null;
   let lastActiveSlot = null;
-  let ocrWorker = null;
+  let isProcessing = false;
 
   let cropNormalized = { x: 0.138, y: 0.815, w: 0.032, h: 0.050 };
   let isDragging = false;
@@ -221,45 +222,19 @@
     if(activeElem) activeElem.classList.add('active-slot');
   }
 
-  // IMAGE PRE-PROCESSING FUNCTION (Grayscale + Thresholding)
-  function processCanvasForOCR(ctx, width, height) {
-    const imgData = ctx.getImageData(0, 0, width, height);
-    const d = imgData.data;
-    for (let i = 0; i < d.length; i += 4) {
-      // Grayscale
-      let avg = (d[i] + d[i + 1] + d[i + 2]) / 3;
-      // High-Contrast Thresholding (Binarization)
-      let color = avg > 140 ? 255 : 0; 
-      d[i] = color;     // Red
-      d[i + 1] = color; // Green
-      d[i + 2] = color; // Blue
-    }
-    ctx.putImageData(imgData, 0, 0);
-  }
-
   async function startOCR() {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const video = document.getElementById('streamVideo');
       video.srcObject = stream;
-      
-      document.getElementById('ocrStatus').textContent = "Initializing Engine...";
-      
-      if (!ocrWorker) {
-        ocrWorker = await Tesseract.createWorker('eng');
-        await ocrWorker.setParameters({
-          tessedit_char_whitelist: '0123456789', // Strictly numbers only
-          tessedit_pageseg_mode: '7',           // Single text line mode for speed & precision
-        });
-      }
 
-      document.getElementById('ocrStatus').textContent = "Scanning Live Feed...";
+      document.getElementById('ocrStatus').textContent = "Connected to Python Server...";
 
       const cropCanvas = document.getElementById('cropCanvas');
       const cropCtx = cropCanvas.getContext('2d');
 
       ocrInterval = setInterval(async () => {
-        if (video.videoWidth === 0) return;
+        if (video.videoWidth === 0 || isProcessing) return;
 
         const cropX = video.videoWidth * cropNormalized.x;
         const cropY = video.videoHeight * cropNormalized.y;
@@ -268,30 +243,44 @@
 
         cropCanvas.width = cropW;
         cropCanvas.height = cropH;
-        
-        // Draw Original Image
         cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-        // Apply Image Pre-processing Filter before OCR
-        processCanvasForOCR(cropCtx, cropW, cropH);
+        // Send Frame to Python EasyOCR Server
+        isProcessing = true;
+        cropCanvas.toBlob(async (blob) => {
+          if (!blob) { isProcessing = false; return; }
+          const formData = new FormData();
+          formData.append('image', blob, 'crop.jpg');
 
-        const { data: { text } } = await ocrWorker.recognize(cropCanvas);
-        const cleanText = text.replace(/[^0-9]/g, '');
-        
-        if (cleanText) {
-          const detectedNum = parseInt(cleanText, 10);
-          if (detectedNum >= 1 && detectedNum <= 25) {
-            document.getElementById('detectedSlot').textContent = detectedNum;
-            if (detectedNum !== lastActiveSlot) {
-              lastActiveSlot = detectedNum;
-              sendData(detectedNum);
+          try {
+            const response = await fetch(PYTHON_OCR_URL, { method: 'POST', body: formData });
+            const data = await response.json();
+            
+            // Handle EasyOCR Response
+            if (data && data.text) {
+              const numbers = data.text.match(/\d+/g);
+              if (numbers && numbers.length > 0) {
+                const detectedNum = parseInt(numbers[0], 10);
+                if (detectedNum >= 1 && detectedNum <= 25) {
+                  document.getElementById('detectedSlot').textContent = detectedNum;
+                  if (detectedNum !== lastActiveSlot) {
+                    lastActiveSlot = detectedNum;
+                    sendData(detectedNum);
+                  }
+                }
+              }
             }
+          } catch (e) {
+            document.getElementById('ocrStatus').textContent = "Python Server Disconnected!";
+          } finally {
+            isProcessing = false;
           }
-        }
-      }, 600);
+        }, 'image/jpeg');
+
+      }, 500);
 
     } catch (err) {
-      alert("Screen Capture cancelled or failed: " + err);
+      alert("Screen Capture failed: " + err);
       document.getElementById('ocrStatus').textContent = "Failed";
     }
   }
