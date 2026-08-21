@@ -2,8 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO SYNC ADMIN + AUTO OCR</title>
-  <!-- Tesseract.js Engine for Client-Side Automatic Scanning -->
+  <title>BGMI PRO SYNC ADMIN + INTERACTIVE SELECTION OCR</title>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     :root { --orange:#ff5a00; --blue:#0088ff; --green:#2ecc71; --red:#dc3545; --dark:#1a1a1a; }
@@ -24,11 +23,15 @@
     #showSettings { display:none; position:fixed; top:10px; right:10px; z-index:1000; background: var(--green); }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
     th, td { padding: 8px; text-align: left; border-bottom: 1px solid #222; }
-    input { background:#000; color:#fff; border:1px solid #444; padding:5px; border-radius:4px; width: 95%; }
+    input[type="text"] { background:#000; color:#fff; border:1px solid #444; padding:5px; border-radius:4px; width: 95%; }
     
-    /* OCR Control Box */
-    .ocr-box { background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; display: flex; gap: 15px; align-items: center; }
-    #cropCanvas { border: 1px solid var(--orange); background: #000; width: 150px; height: 80px; object-fit: contain; }
+    /* Interactive Screen Selection Box */
+    .ocr-section { background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; }
+    .ocr-top { display: flex; gap: 15px; align-items: center; margin-bottom: 15px; }
+    .interactive-container { position: relative; display: inline-block; background: #000; border: 2px solid #333; border-radius: 4px; overflow: hidden; }
+    #streamVideo { width: 640px; height: 360px; display: block; }
+    #selectionCanvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
+    #cropCanvas { border: 1px solid var(--orange); background: #000; width: 120px; height: 70px; object-fit: contain; }
   </style>
 </head>
 <body>
@@ -41,16 +44,29 @@
     <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
   </div>
 
-  <!-- OCR Control Section -->
-  <div class="ocr-box">
-    <div>
-      <button class="btn" style="background:var(--green)" onclick="startOCR()">🎥 START AUTO OCR</button>
-      <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP OCR</button>
+  <div class="ocr-section">
+    <div class="ocr-top">
+      <div>
+        <button class="btn" style="background:var(--green)" onclick="startOCR()">🎥 SELECT SCREEN & START OCR</button>
+        <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP OCR</button>
+      </div>
+      <div>
+        <span style="font-size: 11px; color:#888;">CROP PREVIEW:</span><br>
+        <canvas id="cropCanvas" width="200" height="100"></canvas>
+      </div>
+      <div style="font-size: 13px;">
+        <div><b>OCR Status:</b> <span id="ocrStatus">Disabled</span></div>
+        <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-weight:bold;">--</span></div>
+      </div>
     </div>
-    <canvas id="cropCanvas" width="200" height="100"></canvas>
-    <div style="font-size: 13px;">
-      <div><b>OCR Status:</b> <span id="ocrStatus">Disabled</span></div>
-      <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-weight:bold;">--</span></div>
+
+    <!-- Mouse Selection Feed Canvas -->
+    <div class="interactive-container settings-area">
+      <video id="streamVideo" autoplay muted></video>
+      <canvas id="selectionCanvas" width="640" height="360"></canvas>
+    </div>
+    <div class="settings-area" style="font-size: 11px; color: #888; margin-top: 5px;">
+      💡 <b>Mouse Control:</b> Stream screen over video display. Click and drag mouse on video feed to mark slot area.
     </div>
   </div>
 
@@ -76,8 +92,6 @@
   </div>
 </div>
 
-<video id="videoFeed" autoplay style="display:none;"></video>
-
 <script>
   const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
   const CONFIG_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/configData.json";
@@ -97,6 +111,57 @@
   let ocrInterval = null;
   let lastActiveSlot = null;
   let ocrWorker = null;
+
+  // Normalized Crop Box Percentages
+  let cropNormalized = { x: 0.138, y: 0.815, w: 0.032, h: 0.050 };
+
+  // Mouse Drag Selection State
+  let isDragging = false;
+  let startX = 0, startY = 0;
+
+  const selCanvas = document.getElementById('selectionCanvas');
+  const selCtx = selCanvas.getContext('2d');
+
+  selCanvas.addEventListener('mousedown', (e) => {
+    const rect = selCanvas.getBoundingClientRect();
+    startX = e.clientX - rect.left;
+    startY = e.clientY - rect.top;
+    isDragging = true;
+  });
+
+  selCanvas.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const rect = selCanvas.getBoundingClientRect();
+    const currentX = e.clientX - rect.left;
+    const currentY = e.clientY - rect.top;
+
+    selCtx.clearRect(0, 0, selCanvas.width, selCanvas.height);
+    selCtx.strokeStyle = '#ff5a00';
+    selCtx.lineWidth = 2;
+    selCtx.strokeRect(startX, startY, currentX - startX, currentY - startY);
+  });
+
+  selCanvas.addEventListener('mouseup', (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    const rect = selCanvas.getBoundingClientRect();
+    const endX = e.clientX - rect.left;
+    const endY = e.clientY - rect.top;
+
+    const x = Math.min(startX, endX);
+    const y = Math.min(startY, endY);
+    const w = Math.abs(endX - startX);
+    const h = Math.abs(endY - startY);
+
+    if (w > 5 && h > 5) {
+      cropNormalized = {
+        x: x / selCanvas.width,
+        y: y / selCanvas.height,
+        w: w / selCanvas.width,
+        h: h / selCanvas.height
+      };
+    }
+  });
 
   async function syncToCloud() {
     const data = { teamDB, activeMap };
@@ -128,7 +193,7 @@
       if(!teamDB[i]) teamDB[i] = { name: `TEAM ${i}`, logo: `${i}` };
       const t = teamDB[i]; const on = activeMap[i];
       grid.innerHTML += `<div class="grid-item ${on ? '' : 'disabled-slot'}" id="slot-${i}" onclick="sendData(${i})" style="border-bottom: 5px solid ${fixedColors[i]}"><h2>${i}</h2><p>${t.name}</p></div>`;
-      table.innerHTML += `<tr><td><b>${i}</b></td><td><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleSlot(${i}, this.checked)" style="width:20px;"></td><td><input value="${t.name}" onchange="update(${i}, 'name', this.value)"></td><td><input value="${t.logo}" onchange="update(${i}, 'logo', this.value)"></td></tr>`;
+      table.innerHTML += `<tr><td><b>${i}</b></td><td><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleSlot(${i}, this.checked)" style="width:20px;"></td><td><input type="text" value="${t.name}" onchange="update(${i}, 'name', this.value)"></td><td><input type="text" value="${t.logo}" onchange="update(${i}, 'logo', this.value)"></td></tr>`;
     }
   }
 
@@ -161,11 +226,10 @@
     if(activeElem) activeElem.classList.add('active-slot');
   }
 
-  // --- AUTOMATIC OCR FUNCTIONALITY ---
   async function startOCR() {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      const video = document.getElementById('videoFeed');
+      const video = document.getElementById('streamVideo');
       video.srcObject = stream;
       
       document.getElementById('ocrStatus').textContent = "Initializing Engine...";
@@ -179,23 +243,22 @@
 
       document.getElementById('ocrStatus').textContent = "Scanning Live Feed...";
 
-      const canvas = document.getElementById('cropCanvas');
-      const ctx = canvas.getContext('2d');
+      const cropCanvas = document.getElementById('cropCanvas');
+      const cropCtx = cropCanvas.getContext('2d');
 
       ocrInterval = setInterval(async () => {
         if (video.videoWidth === 0) return;
 
-        // CROP AREA CALCULATION FOR BGMI SPECTATOR SLOT BOX
-        const cropX = video.videoWidth * 0.138;  // Slot location from left
-        const cropY = video.videoHeight * 0.815; // Slot location from top
-        const cropW = video.videoWidth * 0.032;  // Slot width
-        const cropH = video.videoHeight * 0.050; // Slot height
+        const cropX = video.videoWidth * cropNormalized.x;
+        const cropY = video.videoHeight * cropNormalized.y;
+        const cropW = video.videoWidth * cropNormalized.w;
+        const cropH = video.videoHeight * cropNormalized.h;
 
-        canvas.width = cropW;
-        canvas.height = cropH;
-        ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+        cropCanvas.width = cropW;
+        cropCanvas.height = cropH;
+        cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-        const { data: { text } } = await ocrWorker.recognize(canvas);
+        const { data: { text } } = await ocrWorker.recognize(cropCanvas);
         const numbers = text.match(/\d+/g);
         
         if (numbers && numbers.length > 0) {
@@ -219,7 +282,7 @@
   function stopOCR() {
     if (ocrInterval) clearInterval(ocrInterval);
     document.getElementById('ocrStatus').textContent = "Stopped";
-    const video = document.getElementById('videoFeed');
+    const video = document.getElementById('streamVideo');
     if (video.srcObject) {
       video.srcObject.getTracks().forEach(track => track.stop());
     }
