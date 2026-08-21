@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO SYNC ADMIN + INTERACTIVE SELECTION OCR</title>
+  <title>BGMI PRO SYNC ADMIN - HIGH ACCURACY OCR</title>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     :root { --orange:#ff5a00; --blue:#0088ff; --green:#2ecc71; --red:#dc3545; --dark:#1a1a1a; }
@@ -25,7 +25,6 @@
     th, td { padding: 8px; text-align: left; border-bottom: 1px solid #222; }
     input[type="text"] { background:#000; color:#fff; border:1px solid #444; padding:5px; border-radius:4px; width: 95%; }
     
-    /* Interactive Screen Selection Box */
     .ocr-section { background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; }
     .ocr-top { display: flex; gap: 15px; align-items: center; margin-bottom: 15px; }
     .interactive-container { position: relative; display: inline-block; background: #000; border: 2px solid #333; border-radius: 4px; overflow: hidden; }
@@ -40,7 +39,7 @@
 
 <div id="admin">
   <div class="header">
-    <span>SYNC DASHBOARD (AUTO OCR ENABLED)</span>
+    <span>SYNC DASHBOARD (AUTO OCR FIXED)</span>
     <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
   </div>
 
@@ -51,7 +50,7 @@
         <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP OCR</button>
       </div>
       <div>
-        <span style="font-size: 11px; color:#888;">CROP PREVIEW:</span><br>
+        <span style="font-size: 11px; color:#888;">PROCESSED PREVIEW:</span><br>
         <canvas id="cropCanvas" width="200" height="100"></canvas>
       </div>
       <div style="font-size: 13px;">
@@ -60,13 +59,12 @@
       </div>
     </div>
 
-    <!-- Mouse Selection Feed Canvas -->
     <div class="interactive-container settings-area">
       <video id="streamVideo" autoplay muted></video>
       <canvas id="selectionCanvas" width="640" height="360"></canvas>
     </div>
     <div class="settings-area" style="font-size: 11px; color: #888; margin-top: 5px;">
-      💡 <b>Mouse Control:</b> Stream screen over video display. Click and drag mouse on video feed to mark slot area.
+      💡 <b>Mouse Control:</b> Click and drag mouse on video feed to mark slot area accurately.
     </div>
   </div>
 
@@ -112,10 +110,7 @@
   let lastActiveSlot = null;
   let ocrWorker = null;
 
-  // Normalized Crop Box Percentages
   let cropNormalized = { x: 0.138, y: 0.815, w: 0.032, h: 0.050 };
-
-  // Mouse Drag Selection State
   let isDragging = false;
   let startX = 0, startY = 0;
 
@@ -226,6 +221,22 @@
     if(activeElem) activeElem.classList.add('active-slot');
   }
 
+  // IMAGE PRE-PROCESSING FUNCTION (Grayscale + Thresholding)
+  function processCanvasForOCR(ctx, width, height) {
+    const imgData = ctx.getImageData(0, 0, width, height);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      // Grayscale
+      let avg = (d[i] + d[i + 1] + d[i + 2]) / 3;
+      // High-Contrast Thresholding (Binarization)
+      let color = avg > 140 ? 255 : 0; 
+      d[i] = color;     // Red
+      d[i + 1] = color; // Green
+      d[i + 2] = color; // Blue
+    }
+    ctx.putImageData(imgData, 0, 0);
+  }
+
   async function startOCR() {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -237,7 +248,8 @@
       if (!ocrWorker) {
         ocrWorker = await Tesseract.createWorker('eng');
         await ocrWorker.setParameters({
-          tessedit_char_whitelist: '0123456789Team',
+          tessedit_char_whitelist: '0123456789', // Strictly numbers only
+          tessedit_pageseg_mode: '7',           // Single text line mode for speed & precision
         });
       }
 
@@ -256,13 +268,18 @@
 
         cropCanvas.width = cropW;
         cropCanvas.height = cropH;
+        
+        // Draw Original Image
         cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
+        // Apply Image Pre-processing Filter before OCR
+        processCanvasForOCR(cropCtx, cropW, cropH);
+
         const { data: { text } } = await ocrWorker.recognize(cropCanvas);
-        const numbers = text.match(/\d+/g);
+        const cleanText = text.replace(/[^0-9]/g, '');
         
-        if (numbers && numbers.length > 0) {
-          const detectedNum = parseInt(numbers[0], 10);
+        if (cleanText) {
+          const detectedNum = parseInt(cleanText, 10);
           if (detectedNum >= 1 && detectedNum <= 25) {
             document.getElementById('detectedSlot').textContent = detectedNum;
             if (detectedNum !== lastActiveSlot) {
@@ -271,7 +288,7 @@
             }
           }
         }
-      }, 700);
+      }, 600);
 
     } catch (err) {
       alert("Screen Capture cancelled or failed: " + err);
