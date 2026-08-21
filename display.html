@@ -2,160 +2,107 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI CUSTOM OVERLAY - AGENCY FB</title>
+  <title>BGMI STREAM OVERLAY</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
     body {
+      margin: 0;
+      padding: 0;
       background: transparent;
       overflow: hidden;
-      width: 100vw;
-      height: 100vh;
+      font-family: 'Oswald', sans-serif;
+    }
+    
+    /* Overlay Card Container */
+    .slot-card {
       display: flex;
       align-items: center;
-      justify-content: center;
-      font-family: 'Agency FB', 'Agency FB Bold', 'Oswald', sans-serif;
+      background: rgba(0, 0, 0, 0.85);
+      border-left: 6px solid #ff5a00;
+      padding: 6px 14px;
+      border-radius: 4px;
+      color: #fff;
+      width: max-content;
+      gap: 10px;
     }
 
-    /* Container Animation */
-    #layout-container {
-      display: flex;
-      align-items: flex-start;
-      opacity: 0;
-      transform: translateY(10px) scale(0.98);
-      transition: opacity 0.25s ease, transform 0.25s ease;
-      filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.5));
-    }
-
-    #layout-container.active {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-
-    /* Left Square Logo/Slot Box */
-    .logo-box {
-      width: 100px;
-      height: 100px;
-      background: #2ecc71; /* Default theme fallback */
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      z-index: 2;
-      overflow: hidden;
-      flex-shrink: 0;
-    }
-
-    .logo-box img {
-      width: 85%;
-      height: 85%;
+    /* Logo Image Styling */
+    .team-logo {
+      width: 35px;
+      height: 35px;
       object-fit: contain;
-    }
-
-    .slot-fallback {
-      color: #ffffff;
-      font-size: 65px;
-      font-weight: bold;
-      line-height: 1;
-    }
-
-    /* Right Slanted Text Bar */
-    .name-bar {
-      height: 50px;
-      min-width: 200px;
-      max-width: 420px;
-      background: #2ecc71; /* Default theme fallback */
-      padding: 0 40px 0 20px;
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-      clip-path: polygon(0 0, calc(100% - 25px) 0, 100% 100%, 0 100%);
-      margin-left: -1px;
-      z-index: 1;
-      overflow: hidden;
+      display: block;
     }
 
     .team-name {
-      color: #ffffff;
-      font-size: 38px;
+      font-size: 20px;
       font-weight: bold;
       text-transform: uppercase;
       letter-spacing: 1px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      line-height: 1;
-      font-family: 'Agency FB', 'Agency FB Bold', sans-serif;
     }
   </style>
 </head>
 <body>
 
-  <div id="layout-container">
-    <div class="logo-box" id="logoBox">
-      <img id="teamLogo" src="" alt="Logo" style="display:none;">
-      <span id="slotText" class="slot-fallback">--</span>
-    </div>
-
-    <div class="name-bar" id="nameBar">
-      <span class="team-name" id="teamName">TEAM NAME</span>
-    </div>
+<div id="overlay-container">
+  <div class="slot-card" id="card" style="display: none;">
+    <img id="teamLogo" class="team-logo" src="" alt="Logo" onerror="this.style.display='none'">
+    <span id="teamName" class="team-name">TEAM NAME</span>
   </div>
+</div>
 
 <script>
   const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
-  let lastTimestamp = 0;
 
-  async function checkLiveData() {
+  // Helper function to resolve logo path correctly
+  function getLogoPath(logoVal) {
+    if (!logoVal) return "";
+    // Check if full URL or base64 string
+    if (logoVal.startsWith("http://") || logoVal.startsWith("https://") || logoVal.startsWith("data:image")) {
+      return logoVal;
+    }
+    // If logo is specified as filename/number (e.g. "1" or "team1")
+    if (!logoVal.includes(".")) {
+      return `logos/${logoVal}.png`; // 'logos/' folder path with .png extension
+    }
+    return `logos/${logoVal}`;
+  }
+
+  async function fetchLiveData() {
     try {
-      const response = await fetch(LIVE_URL + '?t=' + Date.now());
-      const data = await response.json();
+      const res = await fetch(LIVE_URL);
+      const data = await res.json();
+      
+      if (data && data.name) {
+        const card = document.getElementById('card');
+        const logoImg = document.getElementById('teamLogo');
+        const nameSpan = document.getElementById('teamName');
 
-      if (data && data.ts && data.ts !== lastTimestamp) {
-        lastTimestamp = data.ts;
-        updateDisplay(data);
+        // Update Accent Color
+        if (data.sbg) {
+          card.style.borderLeftColor = data.sbg;
+        }
+
+        // Update Team Name
+        nameSpan.textContent = data.name;
+
+        // Process and Update Logo Path
+        const logoPath = getLogoPath(data.logo);
+        if (logoPath) {
+          logoImg.src = logoPath;
+          logoImg.style.display = "block";
+        } else {
+          logoImg.style.display = "none";
+        }
+
+        card.style.display = "flex";
       }
     } catch (e) {
-      console.error("Sync Error:", e);
+      console.error("Overlay sync error:", e);
     }
   }
 
-  function updateDisplay(data) {
-    const container = document.getElementById('layout-container');
-    const logoBox = document.getElementById('logoBox');
-    const nameBar = document.getElementById('nameBar');
-    const teamLogo = document.getElementById('teamLogo');
-    const slotText = document.getElementById('slotText');
-    const teamName = document.getElementById('teamName');
-
-    container.classList.remove('active');
-
-    setTimeout(() => {
-      // 1. Team Name
-      teamName.textContent = data.name || `TEAM ${data.slot || ''}`;
-
-      // 2. Color Accent
-      const themeColor = data.sbg || '#2ecc71';
-      logoBox.style.backgroundColor = themeColor;
-      nameBar.style.backgroundColor = themeColor;
-
-      // 3. Logo / Slot Display
-      if (data.gfx && data.gfx.trim() !== '') {
-        teamLogo.src = data.gfx;
-        teamLogo.style.display = 'block';
-        slotText.style.display = 'none';
-      } else {
-        teamLogo.style.display = 'none';
-        slotText.textContent = data.slot || '--';
-        slotText.style.display = 'block';
-      }
-
-      container.classList.add('active');
-    }, 150);
-  }
-
-  setInterval(checkLiveData, 1000);
-  checkLiveData();
+  // Poll live data every 400ms
+  setInterval(fetchLiveData, 400);
 </script>
 </body>
 </html>
