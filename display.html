@@ -2,67 +2,118 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI STREAM OVERLAY</title>
+  <title>BGMI LIVE STREAM OVERLAY</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&display=swap');
+
     body {
       margin: 0;
       padding: 0;
       background: transparent;
       overflow: hidden;
-      font-family: 'Oswald', sans-serif;
+      font-family: 'Teko', sans-serif;
     }
-    
-    /* Overlay Card Container */
-    .slot-card {
+
+    #overlay-container {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+    }
+
+    /* Main Container */
+    .stream-banner {
+      display: flex;
+      align-items: flex-start;
+      position: relative;
+    }
+
+    /* Left Square Box (Sponsor + Team Logo) */
+    .logo-box {
+      background: var(--theme-color, #2ecc71);
+      height: 90px;
+      padding: 0 15px;
       display: flex;
       align-items: center;
-      background: rgba(0, 0, 0, 0.85);
-      border-left: 6px solid #ff5a00;
-      padding: 6px 14px;
-      border-radius: 4px;
-      color: #fff;
-      width: max-content;
-      gap: 10px;
+      gap: 12px;
+      z-index: 2;
     }
 
-    /* Logo Image Styling */
-    .team-logo {
-      width: 35px;
-      height: 35px;
+    /* Sponsor Logo (Left) */
+    .sponsor-logo {
+      height: 32px;
       object-fit: contain;
-      display: block;
     }
 
+    /* Vertical Separator Line */
+    .divider {
+      width: 2px;
+      height: 35px;
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    /* Team Logo (Right inside green box) */
+    .team-logo {
+      height: 55px;
+      width: 55px;
+      object-fit: contain;
+    }
+
+    /* Slanted Name Banner Header */
+    .name-banner {
+      background: var(--theme-color, #2ecc71);
+      height: 60px;
+      padding: 0 45px 0 25px;
+      display: flex;
+      align-items: center;
+      clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%);
+      margin-left: -2px;
+      z-index: 1;
+    }
+
+    /* Team Name Text */
     .team-name {
-      font-size: 20px;
-      font-weight: bold;
+      color: #ffffff;
+      font-size: 55px;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: 2px;
+      line-height: 1;
+      white-space: nowrap;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
     }
   </style>
 </head>
 <body>
 
 <div id="overlay-container">
-  <div class="slot-card" id="card" style="display: none;">
-    <img id="teamLogo" class="team-logo" src="" alt="Logo" onerror="this.style.display='none'">
-    <span id="teamName" class="team-name">TEAM NAME</span>
+  <div class="stream-banner" id="banner" style="display: none;">
+    
+    <!-- Left Box with Sponsor + Separator + Team Logo -->
+    <div class="logo-box" id="logoBox">
+      <!-- iQOO Sponsor Text/Image -->
+      <span style="font-size: 28px; font-weight: bold; color: #fff; font-family: sans-serif; letter-spacing: -1px;">iQOO</span>
+      <div class="divider"></div>
+      <img id="teamLogo" class="team-logo" src="" alt="" onerror="this.style.display='none'">
+    </div>
+
+    <!-- Slanted Right Name Banner -->
+    <div class="name-banner" id="nameBanner">
+      <span id="teamName" class="team-name">LOADING...</span>
+    </div>
+
   </div>
 </div>
 
 <script>
   const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
 
-  // Helper function to resolve logo path correctly
   function getLogoPath(logoVal) {
     if (!logoVal) return "";
-    // Check if full URL or base64 string
     if (logoVal.startsWith("http://") || logoVal.startsWith("https://") || logoVal.startsWith("data:image")) {
       return logoVal;
     }
-    // If logo is specified as filename/number (e.g. "1" or "team1")
     if (!logoVal.includes(".")) {
-      return `logos/${logoVal}.png`; // 'logos/' folder path with .png extension
+      return `logos/${logoVal}.png`;
     }
     return `logos/${logoVal}`;
   }
@@ -73,19 +124,21 @@
       const data = await res.json();
       
       if (data && data.name) {
-        const card = document.getElementById('card');
+        const banner = document.getElementById('banner');
+        const logoBox = document.getElementById('logoBox');
+        const nameBanner = document.getElementById('nameBanner');
         const logoImg = document.getElementById('teamLogo');
         const nameSpan = document.getElementById('teamName');
 
-        // Update Accent Color
-        if (data.sbg) {
-          card.style.borderLeftColor = data.sbg;
-        }
+        // Dynamic Color Accent (Fallback to original Green)
+        const activeColor = data.sbg || '#2ecc71';
+        logoBox.style.setProperty('--theme-color', activeColor);
+        nameBanner.style.setProperty('--theme-color', activeColor);
 
-        // Update Team Name
+        // Update Text
         nameSpan.textContent = data.name;
 
-        // Process and Update Logo Path
+        // Process Logo
         const logoPath = getLogoPath(data.logo);
         if (logoPath) {
           logoImg.src = logoPath;
@@ -94,15 +147,14 @@
           logoImg.style.display = "none";
         }
 
-        card.style.display = "flex";
+        banner.style.display = "flex";
       }
     } catch (e) {
-      console.error("Overlay sync error:", e);
+      console.error("Overlay update failed:", e);
     }
   }
 
-  // Poll live data every 400ms
-  setInterval(fetchLiveData, 400);
+  setInterval(fetchLiveData, 300);
 </script>
 </body>
 </html>
