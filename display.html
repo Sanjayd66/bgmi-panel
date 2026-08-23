@@ -2,16 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI OFFICIAL OVERLAY</title>
+  <title>BGMI OFFICIAL OVERLAY - AGENCY FB BOLD</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&display=swap');
+    /* Agency FB Bold / Fallback Font Import */
+    @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@700&display=swap');
 
     body {
       margin: 0;
       padding: 0;
       background: transparent;
       overflow: hidden;
-      font-family: 'Teko', sans-serif;
+      font-family: 'Agency FB', 'Oswald', sans-serif;
+      font-weight: bold;
     }
 
     #overlay-container {
@@ -49,12 +51,13 @@
       display: block;
     }
 
-    /* Slot Number Fallback (In case Logo isn't available) */
+    /* Slot Number Fallback */
     .slot-fallback {
       color: #ffffff;
-      font-size: 65px;
+      font-size: 70px;
       font-weight: 700;
       line-height: 1;
+      font-family: 'Agency FB', 'Oswald', sans-serif;
     }
 
     /* Top Slanted Banner (Team Name Area) */
@@ -69,11 +72,12 @@
       z-index: 1;
     }
 
-    /* Team Name Styling */
+    /* Team Name Styling in Agency FB Bold */
     .team-name {
       color: #ffffff;
-      font-size: 50px;
-      font-weight: 700;
+      font-size: 58px;
+      font-weight: 900;
+      font-family: 'Agency FB', 'Oswald', sans-serif;
       text-transform: uppercase;
       letter-spacing: 2px;
       line-height: 1;
@@ -86,7 +90,7 @@
 <div id="overlay-container">
   <div class="stream-banner" id="banner" style="display: none;">
     
-    <!-- Left Logo Box (Where '17' was shown) -->
+    <!-- Left Logo Box -->
     <div class="logo-box" id="logoBox">
       <img id="teamLogo" class="team-logo" src="" alt="" onerror="showSlotFallback()">
       <span id="slotNumber" class="slot-fallback" style="display: none;">--</span>
@@ -138,7 +142,7 @@
 
         currentSlot = data.slot || "";
 
-        // Apply Dynamic Color Accent
+        // Apply Dynamic Color
         const activeColor = data.sbg || '#00877a';
         logoBox.style.setProperty('--theme-color', activeColor);
         nameBanner.style.setProperty('--theme-color', activeColor);
