@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI LIVE STREAM OVERLAY</title>
+  <title>BGMI OFFICIAL OVERLAY</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&display=swap');
 
@@ -16,70 +16,68 @@
 
     #overlay-container {
       position: absolute;
-      top: 20px;
-      left: 20px;
+      top: 30px;
+      left: 30px;
     }
 
-    /* Main Container */
+    /* Main Container Structure */
     .stream-banner {
       display: flex;
       align-items: flex-start;
       position: relative;
     }
 
-    /* Left Square Box (Sponsor + Team Logo) */
+    /* Left Square Box (Logo Area) */
     .logo-box {
-      background: var(--theme-color, #2ecc71);
-      height: 90px;
-      padding: 0 15px;
+      background: var(--theme-color, #00877a);
+      width: 100px;
+      height: 110px;
       display: flex;
       align-items: center;
-      gap: 12px;
+      justify-content: center;
+      position: relative;
       z-index: 2;
+      box-sizing: border-box;
+      padding: 10px;
     }
 
-    /* Sponsor Logo (Left) */
-    .sponsor-logo {
-      height: 32px;
-      object-fit: contain;
-    }
-
-    /* Vertical Separator Line */
-    .divider {
-      width: 2px;
-      height: 35px;
-      background: rgba(255, 255, 255, 0.4);
-    }
-
-    /* Team Logo (Right inside green box) */
+    /* Team Logo inside Left Box */
     .team-logo {
-      height: 55px;
-      width: 55px;
+      width: 100%;
+      height: 100%;
       object-fit: contain;
+      display: block;
     }
 
-    /* Slanted Name Banner Header */
+    /* Slot Number Fallback (In case Logo isn't available) */
+    .slot-fallback {
+      color: #ffffff;
+      font-size: 65px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    /* Top Slanted Banner (Team Name Area) */
     .name-banner {
-      background: var(--theme-color, #2ecc71);
-      height: 60px;
+      background: var(--theme-color, #00877a);
+      height: 65px;
       padding: 0 45px 0 25px;
       display: flex;
       align-items: center;
-      clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%);
-      margin-left: -2px;
+      clip-path: polygon(0 0, 92% 0, 100% 100%, 0 100%);
+      margin-left: 0px;
       z-index: 1;
     }
 
-    /* Team Name Text */
+    /* Team Name Styling */
     .team-name {
       color: #ffffff;
-      font-size: 55px;
+      font-size: 50px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 2px;
       line-height: 1;
       white-space: nowrap;
-      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
     }
   </style>
 </head>
@@ -88,17 +86,15 @@
 <div id="overlay-container">
   <div class="stream-banner" id="banner" style="display: none;">
     
-    <!-- Left Box with Sponsor + Separator + Team Logo -->
+    <!-- Left Logo Box (Where '17' was shown) -->
     <div class="logo-box" id="logoBox">
-      <!-- iQOO Sponsor Text/Image -->
-      <span style="font-size: 28px; font-weight: bold; color: #fff; font-family: sans-serif; letter-spacing: -1px;">iQOO</span>
-      <div class="divider"></div>
-      <img id="teamLogo" class="team-logo" src="" alt="" onerror="this.style.display='none'">
+      <img id="teamLogo" class="team-logo" src="" alt="" onerror="showSlotFallback()">
+      <span id="slotNumber" class="slot-fallback" style="display: none;">--</span>
     </div>
 
-    <!-- Slanted Right Name Banner -->
+    <!-- Right Slanted Team Name Banner -->
     <div class="name-banner" id="nameBanner">
-      <span id="teamName" class="team-name">LOADING...</span>
+      <span id="teamName" class="team-name">TEAM NAME</span>
     </div>
 
   </div>
@@ -106,6 +102,7 @@
 
 <script>
   const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
+  let currentSlot = "";
 
   function getLogoPath(logoVal) {
     if (!logoVal) return "";
@@ -118,6 +115,14 @@
     return `logos/${logoVal}`;
   }
 
+  function showSlotFallback() {
+    const logoImg = document.getElementById('teamLogo');
+    const slotSpan = document.getElementById('slotNumber');
+    logoImg.style.display = "none";
+    slotSpan.textContent = currentSlot;
+    slotSpan.style.display = "block";
+  }
+
   async function fetchLiveData() {
     try {
       const res = await fetch(LIVE_URL);
@@ -128,29 +133,33 @@
         const logoBox = document.getElementById('logoBox');
         const nameBanner = document.getElementById('nameBanner');
         const logoImg = document.getElementById('teamLogo');
+        const slotSpan = document.getElementById('slotNumber');
         const nameSpan = document.getElementById('teamName');
 
-        // Dynamic Color Accent (Fallback to original Green)
-        const activeColor = data.sbg || '#2ecc71';
+        currentSlot = data.slot || "";
+
+        // Apply Dynamic Color Accent
+        const activeColor = data.sbg || '#00877a';
         logoBox.style.setProperty('--theme-color', activeColor);
         nameBanner.style.setProperty('--theme-color', activeColor);
 
-        // Update Text
+        // Set Team Name
         nameSpan.textContent = data.name;
 
-        // Process Logo
+        // Load Logo Path
         const logoPath = getLogoPath(data.logo);
         if (logoPath) {
+          slotSpan.style.display = "none";
           logoImg.src = logoPath;
           logoImg.style.display = "block";
         } else {
-          logoImg.style.display = "none";
+          showSlotFallback();
         }
 
         banner.style.display = "flex";
       }
     } catch (e) {
-      console.error("Overlay update failed:", e);
+      console.error("Syncing error:", e);
     }
   }
 
