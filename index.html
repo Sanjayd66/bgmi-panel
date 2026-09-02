@@ -39,13 +39,7 @@
 <div id="admin">
   <div class="header">
     <span>SYNC DASHBOARD (PYTHON EASYOCR CONNECTED)</span>
-    <div style="display:flex; align-items:center; gap:15px;">
-      <div id="modeToggle" style="display:flex; border-radius:4px; overflow:hidden; border:1px solid #444;">
-        <button id="localModeBtn" class="btn" style="margin:0; border-radius:0;" onclick="setConnectionMode('local')">🏠 LOCAL MODE</button>
-        <button id="onlineModeBtn" class="btn" style="margin:0; border-radius:0;" onclick="setConnectionMode('online')">☁️ ONLINE MODE</button>
-      </div>
-      <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
-    </div>
+    <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
   </div>
 
   <div class="ocr-section">
@@ -97,10 +91,9 @@
 </div>
 
 <script>
-  const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json"; // Cloud backup only (not used for real-time display anymore)
-  const CONFIG_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/configData.json"; // Team DB cloud sync (unchanged)
+  const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
+  const CONFIG_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/configData.json";
   const PYTHON_OCR_URL = "http://127.0.0.1:5000/ocr"; // Connected to CMD EasyOCR Server
-  const LOCAL_LIVE_URL = "http://127.0.0.1:5000/live"; // NEW: local relay for real-time overlay updates (same PC, no internet round trip)
 
   const fixedColors = {
     1: '#10449e', 2: '#1b5e20', 3: '#c62828', 4: '#e65100', 5: '#6a1b9a',
@@ -113,35 +106,6 @@
   let teamDB = JSON.parse(localStorage.getItem('bgmi_v23_db') || '{}');
   let activeMap = JSON.parse(localStorage.getItem('bgmi_active_map') || '[]');
   if(activeMap.length === 0) activeMap = Array(26).fill(true);
-
-  // ---------------------------------------------------------------------
-  // CONNECTION MODE: manually choose where slot updates get sent.
-  // - 'local'  -> overlay is on THIS same PC. Sends only to the local
-  //               Python server (127.0.0.1:5000/live) -- fast, no internet.
-  // - 'online' -> overlay is on a DIFFERENT PC. Sends only to Firebase --
-  //               slower, but works across machines/internet.
-  // Remembered across reloads via localStorage. Defaults to 'local' since
-  // that's the common case.
-  // ---------------------------------------------------------------------
-  let connectionMode = localStorage.getItem('bgmi_connection_mode') || 'local';
-
-  function setConnectionMode(mode) {
-    connectionMode = mode;
-    localStorage.setItem('bgmi_connection_mode', mode);
-    updateModeButtons();
-  }
-
-  function updateModeButtons() {
-    const localBtn = document.getElementById('localModeBtn');
-    const onlineBtn = document.getElementById('onlineModeBtn');
-    if (connectionMode === 'local') {
-      localBtn.style.background = 'var(--green)';
-      onlineBtn.style.background = '#333';
-    } else {
-      onlineBtn.style.background = 'var(--blue)';
-      localBtn.style.background = '#333';
-    }
-  }
 
   let ocrInterval = null;
   let lastActiveSlot = null;
@@ -250,21 +214,7 @@
     if(!activeMap[slot]) return;
     const t = teamDB[slot];
     const payload = {slot, name:t.name, logo:t.logo, sbg:fixedColors[slot], ts:Date.now()};
-
-    // Sends only to the destination matching the selected mode button --
-    // LOCAL MODE = local Python server (fast, same-PC only), ONLINE MODE =
-    // Firebase (works across PCs, slower).
-    if (connectionMode === 'local') {
-      fetch(LOCAL_LIVE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      }).catch(e => console.error("Local live update failed -- is the Python server running?", e));
-    } else {
-      fetch(LIVE_URL, { method: "PUT", body: JSON.stringify(payload) })
-        .catch(e => console.error("Firebase update failed:", e));
-    }
-
+    fetch(LIVE_URL, {method:"PUT", body:JSON.stringify(payload)});
     document.getElementById('liveStatus').textContent = `LIVE: SLOT ${slot} - ${t.name}`;
     
     document.querySelectorAll('.grid-item').forEach(el => el.classList.remove('active-slot'));
@@ -346,7 +296,6 @@
 
   init();
   loadFromCloud();
-  updateModeButtons();
 </script>
 </body>
 </html>
