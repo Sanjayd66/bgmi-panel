@@ -105,7 +105,20 @@
 </div>
 
 <script>
-  const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
+  // Tries the local server first (instant, only works if this overlay is on
+  // the SAME PC as the admin panel's Python server). Falls back to Firebase
+  // automatically if local isn't reachable (overlay on a different PC).
+  // Once it figures out which one works, it remembers that choice so it
+  // doesn't waste time re-testing local on every single poll -- but it will
+  // re-check periodically in case the setup changes (e.g. you move the
+  // overlay to this PC later).
+  const LOCAL_LIVE_URL = "http://127.0.0.1:5000/live";
+  const FIREBASE_LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
+  const LOCAL_TIMEOUT_MS = 300;
+  const RECHECK_EVERY_N_POLLS = 50; // ~5 seconds at 100ms interval
+
+  let connectionMode = null; // 'local' | 'firebase' | null (not yet determined)
+  let pollCount = 0;
   let currentSlot = "";
 
   function getLogoPath(logoVal) {
@@ -127,11 +140,56 @@
     slotSpan.style.display = "block";
   }
 
+  function fetchWithTimeout(url, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    return fetch(url, { signal: controller.signal })
+      .then(res => res.json())
+      .finally(() => clearTimeout(timer));
+  }
+
   async function fetchLiveData() {
-    try {
-      const res = await fetch(LIVE_URL);
-      const data = await res.json();
-      
+    pollCount++;
+    let data = null;
+
+    const shouldTryLocal =
+      connectionMode === 'local' ||
+      connectionMode === null ||
+      (connectionMode === 'firebase' && pollCount % RECHECK_EVERY_N_POLLS === 0);
+
+    if (shouldTryLocal) {
+      try {
+        data = await fetchWithTimeout(LOCAL_LIVE_URL, LOCAL_TIMEOUT_MS);
+        if (connectionMode !== 'local') {
+          console.log("Overlay: using LOCAL server (same-PC, fast mode)");
+          connectionMode = 'local';
+        }
+      } catch (e) {
+        if (connectionMode === 'local') {
+          console.log("Overlay: local server lost -- falling back to Firebase");
+        }
+        connectionMode = null; // force a Firebase attempt below and re-detect next time
+      }
+    }
+
+    if (data === null) {
+      try {
+        const res = await fetch(FIREBASE_LIVE_URL);
+        data = await res.json();
+        if (connectionMode !== 'firebase') {
+          console.log("Overlay: using FIREBASE (cross-PC/remote mode)");
+          connectionMode = 'firebase';
+        }
+      } catch (e) {
+        console.error("Both local and Firebase failed:", e);
+        return;
+      }
+    }
+
+    applyLiveData(data);
+  }
+
+  function applyLiveData(data) {
       if (data && data.name) {
         const banner = document.getElementById('banner');
         const logoBox = document.getElementById('logoBox');
@@ -162,12 +220,13 @@
 
         banner.style.display = "flex";
       }
-    } catch (e) {
-      console.error("Syncing error:", e);
-    }
   }
 
-  setInterval(fetchLiveData, 300);
+  // CHANGED: interval dropped from 300ms to 100ms. This was expensive to do
+  // against Firebase (internet round trip every poll) but is essentially
+  // free against a local server, so we can poll more often for a snappier
+  // feel without adding real load.
+  setInterval(fetchLiveData, 100);
 </script>
 </body>
 </html>
