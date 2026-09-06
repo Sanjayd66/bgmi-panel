@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <title>BGMI OFFICIAL OVERLAY - AGENCY FB BOLD</title>
   <style>
-    /* Agency FB Bold / Fallback Font Import */
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@700&display=swap');
 
     body {
@@ -22,14 +21,12 @@
       left: 30px;
     }
 
-    /* Main Container Structure */
     .stream-banner {
       display: flex;
       align-items: flex-start;
       position: relative;
     }
 
-    /* Left Square Box (Logo Area) */
     .logo-box {
       background: var(--theme-color, #00877a);
       width: 100px;
@@ -43,7 +40,6 @@
       padding: 10px;
     }
 
-    /* Team Logo inside Left Box */
     .team-logo {
       width: 100%;
       height: 100%;
@@ -51,7 +47,6 @@
       display: block;
     }
 
-    /* Slot Number Fallback */
     .slot-fallback {
       color: #ffffff;
       font-size: 70px;
@@ -60,7 +55,6 @@
       font-family: 'Agency FB', 'Oswald', sans-serif;
     }
 
-    /* Top Slanted Banner (Team Name Area) */
     .name-banner {
       background: var(--theme-color, #00877a);
       height: 65px;
@@ -72,7 +66,6 @@
       z-index: 1;
     }
 
-    /* Team Name Styling in Agency FB Bold */
     .team-name {
       color: #ffffff;
       font-size: 58px;
@@ -89,23 +82,31 @@
 
 <div id="overlay-container">
   <div class="stream-banner" id="banner" style="display: none;">
-    
-    <!-- Left Logo Box -->
     <div class="logo-box" id="logoBox">
       <img id="teamLogo" class="team-logo" src="" alt="" onerror="showSlotFallback()">
       <span id="slotNumber" class="slot-fallback" style="display: none;">--</span>
     </div>
-
-    <!-- Right Slanted Team Name Banner -->
     <div class="name-banner" id="nameBanner">
       <span id="teamName" class="team-name">TEAM NAME</span>
     </div>
-
   </div>
 </div>
 
+<!-- Firebase SDK -- gives us a real-time WebSocket listener instead of
+     polling. Updates arrive the instant Python pushes them, no waiting. -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
 <script>
-  const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
+  // Which screen's data to show -- set via the OBS Browser Source URL:
+  //   overlay.html?screen=1   or   overlay.html?screen=2
+  const params = new URLSearchParams(window.location.search);
+  const SCREEN_ID = params.get('screen') || '1';
+
+  firebase.initializeApp({
+    databaseURL: "https://bgmi-overlay-default-rtdb.firebaseio.com"
+  });
+
   let currentSlot = "";
 
   function getLogoPath(logoVal) {
@@ -127,47 +128,45 @@
     slotSpan.style.display = "block";
   }
 
-  async function fetchLiveData() {
-    try {
-      const res = await fetch(LIVE_URL);
-      const data = await res.json();
-      
-      if (data && data.name) {
-        const banner = document.getElementById('banner');
-        const logoBox = document.getElementById('logoBox');
-        const nameBanner = document.getElementById('nameBanner');
-        const logoImg = document.getElementById('teamLogo');
-        const slotSpan = document.getElementById('slotNumber');
-        const nameSpan = document.getElementById('teamName');
+  function renderData(data) {
+    if (!data || !data.name) return;
 
-        currentSlot = data.slot || "";
+    const banner = document.getElementById('banner');
+    const logoBox = document.getElementById('logoBox');
+    const nameBanner = document.getElementById('nameBanner');
+    const logoImg = document.getElementById('teamLogo');
+    const slotSpan = document.getElementById('slotNumber');
+    const nameSpan = document.getElementById('teamName');
 
-        // Apply Dynamic Color
-        const activeColor = data.sbg || '#00877a';
-        logoBox.style.setProperty('--theme-color', activeColor);
-        nameBanner.style.setProperty('--theme-color', activeColor);
+    currentSlot = data.slot || "";
 
-        // Set Team Name
-        nameSpan.textContent = data.name;
+    const activeColor = data.sbg || '#00877a';
+    logoBox.style.setProperty('--theme-color', activeColor);
+    nameBanner.style.setProperty('--theme-color', activeColor);
 
-        // Load Logo Path
-        const logoPath = getLogoPath(data.logo);
-        if (logoPath) {
-          slotSpan.style.display = "none";
-          logoImg.src = logoPath;
-          logoImg.style.display = "block";
-        } else {
-          showSlotFallback();
-        }
+    nameSpan.textContent = data.name;
 
-        banner.style.display = "flex";
-      }
-    } catch (e) {
-      console.error("Syncing error:", e);
+    const logoPath = getLogoPath(data.logo);
+    if (logoPath) {
+      slotSpan.style.display = "none";
+      logoImg.src = logoPath;
+      logoImg.style.display = "block";
+    } else {
+      showSlotFallback();
     }
+
+    banner.style.display = "flex";
   }
 
-  setInterval(fetchLiveData, 300);
+  // Real-time listener -- fires the instant Python's server.py pushes a
+  // change to Firebase. No polling interval, no "did anything change?"
+  // round-trip -- the connection stays open and Firebase pushes to us.
+  const liveRef = firebase.database().ref(`liveData/${SCREEN_ID}`);
+  liveRef.on('value', (snapshot) => {
+    renderData(snapshot.val());
+  }, (error) => {
+    console.error("Firebase listener error:", error);
+  });
 </script>
 </body>
 </html>
