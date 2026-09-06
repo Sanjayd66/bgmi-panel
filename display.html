@@ -129,9 +129,17 @@
   }
 
   function renderData(data) {
-    if (!data || !data.name) return;
-
     const banner = document.getElementById('banner');
+
+    // Server pushes {} when a slot gets deactivated in the admin panel
+    // (or on manual clear). Previously this function just returned here,
+    // leaving whatever team banner was already showing stuck on screen
+    // forever. Now we explicitly hide the banner instead.
+    if (!data || !data.name) {
+      banner.style.display = "none";
+      return;
+    }
+
     const logoBox = document.getElementById('logoBox');
     const nameBanner = document.getElementById('nameBanner');
     const logoImg = document.getElementById('teamLogo');
