@@ -170,6 +170,14 @@
         if (data && data.name) {
           document.getElementById(`slotBig-${sid}`).textContent = data.slot;
           document.getElementById(`teamBig-${sid}`).textContent = data.name;
+        } else {
+          // Empty payload -- the server just cleared this screen (e.g. the
+          // slot that was showing got deactivated in the admin panel).
+          // Reset the card instead of leaving the old data on screen.
+          const slotEl = document.getElementById(`slotBig-${sid}`);
+          const teamEl = document.getElementById(`teamBig-${sid}`);
+          if (slotEl) slotEl.textContent = "--";
+          if (teamEl) teamEl.textContent = "Waiting for OCR...";
         }
       } catch (e) { /* heartbeat */ }
     };
