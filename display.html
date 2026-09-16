@@ -48,8 +48,8 @@
     }
 
     .slot-fallback {
-      color: var(--text-color, #ffffff);
-      font-size: 54px;
+      color: #ffffff;
+      font-size: 70px;
       font-weight: 700;
       line-height: 1;
       font-family: 'Agency FB', 'Oswald', sans-serif;
@@ -58,22 +58,16 @@
     .name-banner {
       background: var(--theme-color, #00877a);
       height: 65px;
-      min-width: 220px;
-      max-width: 480px;
-      width: fit-content;
       padding: 0 45px 0 25px;
-      box-sizing: border-box;
       display: flex;
       align-items: center;
       clip-path: polygon(0 0, 92% 0, 100% 100%, 0 100%);
       margin-left: 0px;
       z-index: 1;
-      overflow: hidden;
-      transition: width 0.25s ease;
     }
 
     .team-name {
-      color: var(--text-color, #ffffff);
+      color: #ffffff;
       font-size: 58px;
       font-weight: 900;
       font-family: 'Agency FB', 'Oswald', sans-serif;
@@ -81,10 +75,6 @@
       letter-spacing: 2px;
       line-height: 1;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 100%;
-      display: block;
     }
   </style>
 </head>
@@ -102,28 +92,20 @@
   </div>
 </div>
 
+<!-- Firebase SDK -- gives us a real-time WebSocket listener instead of
+     polling. Updates arrive the instant Python pushes them, no waiting. -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
 <script>
-  // ==========================================================================
-  // FIXED: this overlay used to listen to Firebase (liveData/<screen>), but
-  // the offline setup keeps everything on the local Python server and never
-  // pushes to Firebase -- so the overlay received nothing and stayed blank
-  // while the admin panel (which reads the local server) worked fine.
-  //
-  // Now it listens to the SAME local SSE stream the admin panel uses:
-  //   http://127.0.0.1:5000/stream/<screen>
-  // Server-Sent Events are push-based, so updates arrive instantly (no
-  // polling), and there is no internet round trip at all.
-  //
-  // SCREEN SELECTION (this is what fixes the "dono screens confuse ho rahe"
-  // problem): set it in the OBS Browser Source URL --
-  //   overlay.html?screen=1   -> Screen 1 ka apna overlay
-  //   overlay.html?screen=2   -> Screen 2 ka apna overlay
-  // Add TWO separate Browser Sources in OBS, one with each URL. Each one
-  // only ever receives its own screen's data, so they can never mix up.
-  // ==========================================================================
-  const SERVER = "http://127.0.0.1:5000";
+  // Which screen's data to show -- set via the OBS Browser Source URL:
+  //   overlay.html?screen=1   or   overlay.html?screen=2
   const params = new URLSearchParams(window.location.search);
   const SCREEN_ID = params.get('screen') || '1';
+
+  firebase.initializeApp({
+    databaseURL: "https://bgmi-overlay-default-rtdb.firebaseio.com"
+  });
 
   let currentSlot = "";
 
@@ -147,15 +129,9 @@
   }
 
   function renderData(data) {
+    if (!data || !data.name) return;
+
     const banner = document.getElementById('banner');
-
-    // Server pushes {} when a slot gets deactivated or cleared. Hide the
-    // banner instead of leaving a stale team stuck on screen.
-    if (!data || !data.name) {
-      banner.style.display = "none";
-      return;
-    }
-
     const logoBox = document.getElementById('logoBox');
     const nameBanner = document.getElementById('nameBanner');
     const logoImg = document.getElementById('teamLogo');
@@ -164,12 +140,9 @@
 
     currentSlot = data.slot || "";
 
-    const activeColor = data.sbg || data.color || '#00877a';
-    const activeTextColor = data.textColor || '#ffffff';
+    const activeColor = data.sbg || '#00877a';
     logoBox.style.setProperty('--theme-color', activeColor);
     nameBanner.style.setProperty('--theme-color', activeColor);
-    logoBox.style.setProperty('--text-color', activeTextColor);
-    nameBanner.style.setProperty('--text-color', activeTextColor);
 
     nameSpan.textContent = data.name;
 
@@ -185,26 +158,15 @@
     banner.style.display = "flex";
   }
 
-  // Same connect-with-auto-reconnect pattern the admin panel uses, so a
-  // server restart doesn't permanently kill the overlay.
-  function connectStream() {
-    const es = new EventSource(`${SERVER}/stream/${SCREEN_ID}`);
-
-    es.onmessage = (event) => {
-      try {
-        renderData(JSON.parse(event.data));
-      } catch (e) {
-        /* heartbeat / non-JSON keepalive -- ignore */
-      }
-    };
-
-    es.onerror = () => {
-      es.close();
-      setTimeout(connectStream, 1500);
-    };
-  }
-
-  connectStream();
+  // Real-time listener -- fires the instant Python's server.py pushes a
+  // change to Firebase. No polling interval, no "did anything change?"
+  // round-trip -- the connection stays open and Firebase pushes to us.
+  const liveRef = firebase.database().ref(`liveData/${SCREEN_ID}`);
+  liveRef.on('value', (snapshot) => {
+    renderData(snapshot.val());
+  }, (error) => {
+    console.error("Firebase listener error:", error);
+  });
 </script>
 </body>
 </html>
