@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI OFFICIAL OVERLAY - AGENCY FB BOLD</title>
+  <title>BGMI OFFICIAL OVERLAY - SCREEN</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@700&display=swap');
 
@@ -92,20 +92,15 @@
   </div>
 </div>
 
-<!-- Firebase SDK -- gives us a real-time WebSocket listener instead of
-     polling. Updates arrive the instant Python pushes them, no waiting. -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-
 <script>
-  // Which screen's data to show -- set via the OBS Browser Source URL:
+  // Which screen is this overlay for? Set via the OBS Browser Source URL:
   //   overlay.html?screen=1   or   overlay.html?screen=2
   const params = new URLSearchParams(window.location.search);
   const SCREEN_ID = params.get('screen') || '1';
 
-  firebase.initializeApp({
-    databaseURL: "https://bgmi-overlay-default-rtdb.firebaseio.com"
-  });
+  const SERVER = "http://127.0.0.1:5000";
+  const STREAM_URL = `${SERVER}/stream/${SCREEN_ID}`;
+  const LIVE_URL = `${SERVER}/live/${SCREEN_ID}`;
 
   let currentSlot = "";
 
@@ -129,17 +124,9 @@
   }
 
   function renderData(data) {
+    if (!data || !data.name) return;
+
     const banner = document.getElementById('banner');
-
-    // Server pushes {} when a slot gets deactivated in the admin panel
-    // (or on manual clear). Previously this function just returned here,
-    // leaving whatever team banner was already showing stuck on screen
-    // forever. Now we explicitly hide the banner instead.
-    if (!data || !data.name) {
-      banner.style.display = "none";
-      return;
-    }
-
     const logoBox = document.getElementById('logoBox');
     const nameBanner = document.getElementById('nameBanner');
     const logoImg = document.getElementById('teamLogo');
@@ -166,15 +153,36 @@
     banner.style.display = "flex";
   }
 
-  // Real-time listener -- fires the instant Python's server.py pushes a
-  // change to Firebase. No polling interval, no "did anything change?"
-  // round-trip -- the connection stays open and Firebase pushes to us.
-  const liveRef = firebase.database().ref(`liveData/${SCREEN_ID}`);
-  liveRef.on('value', (snapshot) => {
-    renderData(snapshot.val());
-  }, (error) => {
-    console.error("Firebase listener error:", error);
-  });
+  // --- Primary path: Server-Sent Events -- server pushes the instant it
+  // detects a change, so there is no polling delay at all on this side. ---
+  function connectStream() {
+    const es = new EventSource(STREAM_URL);
+    es.onmessage = (event) => {
+      try {
+        renderData(JSON.parse(event.data));
+      } catch (e) { /* heartbeat / ignore */ }
+    };
+    es.onerror = () => {
+      // Server might be restarting -- close and retry, and meanwhile fall
+      // back to a quick poll so the overlay doesn't just freeze.
+      es.close();
+      setTimeout(connectStream, 1000);
+    };
+  }
+
+  // --- Fallback poll (very cheap, local loopback only) in case SSE isn't
+  // available for some reason. ---
+  async function pollOnce() {
+    try {
+      const res = await fetch(LIVE_URL);
+      const data = await res.json();
+      renderData(data);
+    } catch (e) { /* server not up yet */ }
+  }
+
+  connectStream();
+  pollOnce();
+  setInterval(pollOnce, 2000); // cheap safety-net poll, SSE handles real-time updates
 </script>
 </body>
 </html>
