@@ -2,15 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BGMI PRO SYNC ADMIN - EASYOCR SERVER CONNECTED</title>
+  <title>BGMI SYNC ADMIN - OFFLINE (LOCAL SERVER)</title>
   <style>
     :root { --orange:#ff5a00; --blue:#0088ff; --green:#2ecc71; --red:#dc3545; --dark:#1a1a1a; }
     body{margin:0;font-family:'Oswald',sans-serif;background:#050505;color:#fff;overflow-x:hidden;}
     #admin{padding:20px;}
     .header { background:#000; border-left:5px solid var(--orange); padding:15px; font-size:20px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center; }
+    .screens-row { display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:20px; }
+    .screen-card { background:#111; border:1px solid #333; border-radius:8px; padding:15px; }
+    .screen-card h3 { margin:0 0 10px 0; color:var(--orange); }
+    .screen-card .slot-big { font-size:48px; font-weight:900; }
+    .screen-card .team-name-big { font-size:18px; color:#ccc; }
+    .manual-row { display:flex; gap:8px; margin-top:10px; }
+    .manual-row input { width:60px; }
     .grid-container { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
     .grid-item { background: var(--dark); border: 2px solid #333; border-radius: 8px; padding: 15px 5px; text-align: center; cursor: pointer; transition: 0.2s; position: relative; }
-    .grid-item.active-slot { border-color: white; box-shadow: 0 0 15px rgba(255,255,255,0.5); }
     .grid-item.disabled-slot { opacity: 0.2; pointer-events: none; }
     .grid-item h2 { margin: 0; font-size: 32px; color: #fff; }
     .grid-item p { margin: 5px 0 0 0; font-size: 12px; color: #aaa; text-transform: uppercase; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -18,69 +24,36 @@
     .btn { padding: 10px 20px; border:none; border-radius:4px; color:#fff; font-weight:bold; cursor:pointer; text-transform:uppercase; font-size:12px; }
     #import-area { width:100%; height:80px; background:#111; color:#0f0; border:1px solid #444; padding:10px; font-size:12px; margin-bottom:10px; border-radius:4px; box-sizing: border-box; }
     .settings-panel { background: #111; padding: 20px; border-radius: 8px; margin-top: 20px; border: 1px solid #333; }
-    .hide-ui { display: none !important; }
-    #showSettings { display:none; position:fixed; top:10px; right:10px; z-index:1000; background: var(--green); }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
     th, td { padding: 8px; text-align: left; border-bottom: 1px solid #222; }
-    input[type="text"] { background:#000; color:#fff; border:1px solid #444; padding:5px; border-radius:4px; width: 95%; }
-    
-    .ocr-section { background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; }
-    .ocr-top { display: flex; gap: 15px; align-items: center; margin-bottom: 15px; }
-    .interactive-container { position: relative; display: inline-block; background: #000; border: 2px solid #333; border-radius: 4px; overflow: hidden; }
-    #streamVideo { width: 640px; height: 360px; display: block; }
-    #selectionCanvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
-    #cropCanvas { border: 1px solid var(--orange); background: #000; width: 120px; height: 70px; object-fit: contain; }
+    input[type="text"], input[type="number"] { background:#000; color:#fff; border:1px solid #444; padding:5px; border-radius:4px; }
+    input[type="text"] { width: 95%; }
   </style>
 </head>
 <body>
 
-<button id="showSettings" class="btn" onclick="toggleUI(false)">SHOW SETTINGS</button>
-
 <div id="admin">
   <div class="header">
-    <span>SYNC DASHBOARD (PYTHON EASYOCR CONNECTED)</span>
-    <span id="liveStatus" style="color:var(--green); font-size: 14px;">READY</span>
+    <span>SYNC DASHBOARD (OFFLINE - LOCAL PYTHON SERVER)</span>
+    <span id="liveStatus" style="color:var(--green); font-size: 14px;">CHECKING SERVER...</span>
   </div>
 
-  <div class="ocr-section">
-    <div class="ocr-top">
-      <div>
-        <button class="btn" style="background:var(--green)" onclick="startOCR()">🎥 SELECT SCREEN & START OCR</button>
-        <button class="btn" style="background:var(--red)" onclick="stopOCR()">🛑 STOP OCR</button>
-      </div>
-      <div>
-        <span style="font-size: 11px; color:#888;">CROP PREVIEW:</span><br>
-        <canvas id="cropCanvas" width="200" height="100"></canvas>
-      </div>
-      <div style="font-size: 13px;">
-        <div><b>OCR Engine:</b> <span style="color:var(--blue)">Python EasyOCR Server</span></div>
-        <div><b>OCR Status:</b> <span id="ocrStatus">Disabled</span></div>
-        <div><b>Detected Slot:</b> <span id="detectedSlot" style="color:var(--orange); font-weight:bold;">--</span></div>
-      </div>
-    </div>
-
-    <div class="interactive-container settings-area">
-      <video id="streamVideo" autoplay muted></video>
-      <canvas id="selectionCanvas" width="640" height="360"></canvas>
-    </div>
-    <div class="settings-area" style="font-size: 11px; color: #888; margin-top: 5px;">
-      💡 <b>Mouse Control:</b> Click and drag mouse on video feed to mark slot area accurately.
-    </div>
+  <div class="screens-row" id="screensRow">
+    <!-- filled in by JS: one card per screen, showing live OCR result + manual override -->
   </div>
 
   <div class="grid-container" id="controlGrid"></div>
 
-  <div class="settings-area">
+  <div>
     <textarea id="import-area" placeholder="1 | TEAM NAME"></textarea>
     <div class="btn-group">
         <button class="btn" style="background:#333" onclick="importSlots()">IMPORT</button>
-        <button class="btn" style="background:var(--orange)" onclick="syncToCloud()">☁️ SYNC TO CLOUD (SAVE)</button>
-        <button class="btn" style="background:var(--blue)" onclick="loadFromCloud()">🔄 LOAD FROM CLOUD</button>
-        <button class="btn" style="background:var(--red)" onclick="toggleUI(true)">CAST MODE</button>
+        <button class="btn" style="background:var(--orange)" onclick="syncToServer()">💾 SAVE TEAM DATA</button>
+        <button class="btn" style="background:var(--blue)" onclick="loadFromServer()">🔄 RELOAD FROM SERVER</button>
     </div>
   </div>
 
-  <div class="settings-panel settings-area">
+  <div class="settings-panel">
     <table>
       <thead>
         <tr><th>SLOT</th><th>ACTIVE</th><th>TEAM NAME</th><th>LOGO</th></tr>
@@ -91,211 +64,136 @@
 </div>
 
 <script>
-  const LIVE_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/liveData.json";
-  const CONFIG_URL = "https://bgmi-overlay-default-rtdb.firebaseio.com/configData.json";
-  const PYTHON_OCR_URL = "http://127.0.0.1:5000/ocr"; // Connected to CMD EasyOCR Server
+  const SERVER = "http://127.0.0.1:5000";
+  let SCREEN_IDS = []; // filled in from server config, not hardcoded
 
-  const fixedColors = {
-    1: '#10449e', 2: '#1b5e20', 3: '#c62828', 4: '#e65100', 5: '#6a1b9a',
-    6: '#2ecc71', 7: '#ad1457', 8: '#00796b', 9: '#795548', 10: '#303f9f',
-    11: '#fbc02d', 12: '#1565c0', 13: '#388e3c', 14: '#ff8f00', 15: '#d81b60',
-    16: '#7b1fa2', 17: '#00897b', 18: '#9e9e9e', 19: '#558b2f', 20: '#5d4037',
-    21: '#0277bd', 22: '#616161', 23: '#ff5722', 24: '#7cb342', 25: '#263238'
-  };
+  let teamDB = {};
+  let activeMap = Array(26).fill(true);
+  let colors = {};
 
-  let teamDB = JSON.parse(localStorage.getItem('bgmi_v23_db') || '{}');
-  let activeMap = JSON.parse(localStorage.getItem('bgmi_active_map') || '[]');
-  if(activeMap.length === 0) activeMap = Array(26).fill(true);
-
-  let ocrInterval = null;
-  let lastActiveSlot = null;
-  let isProcessing = false;
-
-  let cropNormalized = { x: 0.138, y: 0.815, w: 0.032, h: 0.050 };
-  let isDragging = false;
-  let startX = 0, startY = 0;
-
-  const selCanvas = document.getElementById('selectionCanvas');
-  const selCtx = selCanvas.getContext('2d');
-
-  selCanvas.addEventListener('mousedown', (e) => {
-    const rect = selCanvas.getBoundingClientRect();
-    startX = e.clientX - rect.left;
-    startY = e.clientY - rect.top;
-    isDragging = true;
-  });
-
-  selCanvas.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
-    const rect = selCanvas.getBoundingClientRect();
-    const currentX = e.clientX - rect.left;
-    const currentY = e.clientY - rect.top;
-
-    selCtx.clearRect(0, 0, selCanvas.width, selCanvas.height);
-    selCtx.strokeStyle = '#ff5a00';
-    selCtx.lineWidth = 2;
-    selCtx.strokeRect(startX, startY, currentX - startX, currentY - startY);
-  });
-
-  selCanvas.addEventListener('mouseup', (e) => {
-    if (!isDragging) return;
-    isDragging = false;
-    const rect = selCanvas.getBoundingClientRect();
-    const endX = e.clientX - rect.left;
-    const endY = e.clientY - rect.top;
-
-    const x = Math.min(startX, endX);
-    const y = Math.min(startY, endY);
-    const w = Math.abs(endX - startX);
-    const h = Math.abs(endY - startY);
-
-    if (w > 5 && h > 5) {
-      cropNormalized = {
-        x: x / selCanvas.width,
-        y: y / selCanvas.height,
-        w: w / selCanvas.width,
-        h: h / selCanvas.height
-      };
-    }
-  });
-
-  async function syncToCloud() {
-    const data = { teamDB, activeMap };
+  async function checkServer() {
     try {
-      await fetch(CONFIG_URL, { method: "PUT", body: JSON.stringify(data) });
-      alert("PC ka data Cloud par save ho gaya!");
-    } catch(e) { alert("Sync failed!"); }
+      const res = await fetch(`${SERVER}/`);
+      const data = await res.json();
+      document.getElementById('liveStatus').textContent = "SERVER CONNECTED (OFFLINE MODE)";
+      document.getElementById('liveStatus').style.color = "var(--green)";
+    } catch (e) {
+      document.getElementById('liveStatus').textContent = "SERVER NOT RUNNING - start server.py";
+      document.getElementById('liveStatus').style.color = "var(--red)";
+    }
   }
 
-  async function loadFromCloud() {
+  async function loadFromServer() {
     try {
-      const res = await fetch(CONFIG_URL);
+      const res = await fetch(`${SERVER}/config`);
       const data = await res.json();
-      if(data) {
-        teamDB = data.teamDB;
-        activeMap = data.activeMap;
-        localStorage.setItem('bgmi_v23_db', JSON.stringify(teamDB));
-        localStorage.setItem('bgmi_active_map', JSON.stringify(activeMap));
-        init();
-      }
-    } catch(e) { console.error("Load failed"); }
+      teamDB = data.teamDB || {};
+      activeMap = data.activeMap || Array(26).fill(true);
+      colors = data.colors || {};
+      init();
+    } catch (e) {
+      console.error("Load failed", e);
+    }
+  }
+
+  async function syncToServer() {
+    try {
+      await fetch(`${SERVER}/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamDB, activeMap, colors })
+      });
+      alert("Saved to local server!");
+    } catch (e) {
+      alert("Save failed - is server.py running?");
+    }
   }
 
   function init() {
     const grid = document.getElementById('controlGrid');
     const table = document.getElementById('configTable');
     grid.innerHTML = ""; table.innerHTML = "";
-    for(let i=1; i<=25; i++) {
-      if(!teamDB[i]) teamDB[i] = { name: `TEAM ${i}`, logo: `${i}` };
+    for (let i = 1; i <= 25; i++) {
+      if (!teamDB[i]) teamDB[i] = { name: `TEAM ${i}`, logo: `${i}` };
       const t = teamDB[i]; const on = activeMap[i];
-      grid.innerHTML += `<div class="grid-item ${on ? '' : 'disabled-slot'}" id="slot-${i}" onclick="sendData(${i})" style="border-bottom: 5px solid ${fixedColors[i]}"><h2>${i}</h2><p>${t.name}</p></div>`;
+      const color = colors[i] || "#00877a";
+      grid.innerHTML += `<div class="grid-item ${on ? '' : 'disabled-slot'}" style="border-bottom: 5px solid ${color}"><h2>${i}</h2><p>${t.name}</p></div>`;
       table.innerHTML += `<tr><td><b>${i}</b></td><td><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleSlot(${i}, this.checked)" style="width:20px;"></td><td><input type="text" value="${t.name}" onchange="update(${i}, 'name', this.value)"></td><td><input type="text" value="${t.logo}" onchange="update(${i}, 'logo', this.value)"></td></tr>`;
     }
   }
 
-  function toggleSlot(i, val) { activeMap[i] = val; localStorage.setItem('bgmi_active_map', JSON.stringify(activeMap)); init(); }
-  function update(i, k, v) { teamDB[i][k] = v; localStorage.setItem('bgmi_v23_db', JSON.stringify(teamDB)); init(); }
+  function toggleSlot(i, val) { activeMap[i] = val; init(); }
+  function update(i, k, v) { teamDB[i][k] = v; init(); }
 
-  function importSlots(){
-    const text=document.getElementById('import-area').value;
-    text.split('\n').forEach(line=>{
-      const m=line.match(/(\d+)\s*[|•-]\s*(.+)/);
-      if(m){ const slot = parseInt(m[1]); if(slot>=1 && slot<=25) teamDB[slot].name = m[2].trim(); }
+  function importSlots() {
+    const text = document.getElementById('import-area').value;
+    text.split('\n').forEach(line => {
+      const m = line.match(/(\d+)\s*[|•-]\s*(.+)/);
+      if (m) { const slot = parseInt(m[1]); if (slot >= 1 && slot <= 25) teamDB[slot].name = m[2].trim(); }
     });
-    localStorage.setItem('bgmi_v23_db',JSON.stringify(teamDB)); init();
+    init();
   }
 
-  function toggleUI(hide) {
-    document.querySelectorAll('.settings-area').forEach(el => el.classList.toggle('hide-ui', hide));
-    document.getElementById('showSettings').style.display = hide ? 'block' : 'none';
+  // --- Per-screen live status + manual override (fallback if OCR misses) ---
+  function buildScreenCards() {
+    const row = document.getElementById('screensRow');
+    row.innerHTML = "";
+    SCREEN_IDS.forEach(sid => {
+      row.innerHTML += `
+        <div class="screen-card">
+          <h3>SCREEN ${sid}</h3>
+          <div class="slot-big" id="slotBig-${sid}">--</div>
+          <div class="team-name-big" id="teamBig-${sid}">Waiting for OCR...</div>
+          <div class="manual-row">
+            <input type="number" id="manualInput-${sid}" min="1" max="25" placeholder="#">
+            <button class="btn" style="background:var(--blue)" onclick="manualOverride('${sid}')">FORCE SET</button>
+          </div>
+        </div>`;
+    });
   }
 
-  function sendData(slot) {
-    if(!activeMap[slot]) return;
-    const t = teamDB[slot];
-    const payload = {slot, name:t.name, logo:t.logo, sbg:fixedColors[slot], ts:Date.now()};
-    fetch(LIVE_URL, {method:"PUT", body:JSON.stringify(payload)});
-    document.getElementById('liveStatus').textContent = `LIVE: SLOT ${slot} - ${t.name}`;
-    
-    document.querySelectorAll('.grid-item').forEach(el => el.classList.remove('active-slot'));
-    const activeElem = document.getElementById(`slot-${slot}`);
-    if(activeElem) activeElem.classList.add('active-slot');
+  function manualOverride(sid) {
+    const val = document.getElementById(`manualInput-${sid}`).value;
+    if (!val) return;
+    fetch(`${SERVER}/manual/${sid}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slot: parseInt(val) })
+    });
   }
 
-  async function startOCR() {
+  function connectScreenStream(sid) {
+    const es = new EventSource(`${SERVER}/stream/${sid}`);
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data && data.name) {
+          document.getElementById(`slotBig-${sid}`).textContent = data.slot;
+          document.getElementById(`teamBig-${sid}`).textContent = data.name;
+        }
+      } catch (e) { /* heartbeat */ }
+    };
+    es.onerror = () => { es.close(); setTimeout(() => connectScreenStream(sid), 1500); };
+  }
+
+  async function fetchScreenIds() {
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      const video = document.getElementById('streamVideo');
-      video.srcObject = stream;
-
-      document.getElementById('ocrStatus').textContent = "Connected to Python Server...";
-
-      const cropCanvas = document.getElementById('cropCanvas');
-      const cropCtx = cropCanvas.getContext('2d');
-
-      ocrInterval = setInterval(async () => {
-        if (video.videoWidth === 0 || isProcessing) return;
-
-        const cropX = video.videoWidth * cropNormalized.x;
-        const cropY = video.videoHeight * cropNormalized.y;
-        const cropW = video.videoWidth * cropNormalized.w;
-        const cropH = video.videoHeight * cropNormalized.h;
-
-        cropCanvas.width = cropW;
-        cropCanvas.height = cropH;
-        cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-
-        // Send Frame to Python EasyOCR Server
-        isProcessing = true;
-        cropCanvas.toBlob(async (blob) => {
-          if (!blob) { isProcessing = false; return; }
-          const formData = new FormData();
-          formData.append('image', blob, 'crop.jpg');
-
-          try {
-            const response = await fetch(PYTHON_OCR_URL, { method: 'POST', body: formData });
-            const data = await response.json();
-            
-            // Handle EasyOCR Response
-            if (data && data.text) {
-              const numbers = data.text.match(/\d+/g);
-              if (numbers && numbers.length > 0) {
-                const detectedNum = parseInt(numbers[0], 10);
-                if (detectedNum >= 1 && detectedNum <= 25) {
-                  document.getElementById('detectedSlot').textContent = detectedNum;
-                  if (detectedNum !== lastActiveSlot) {
-                    lastActiveSlot = detectedNum;
-                    sendData(detectedNum);
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            document.getElementById('ocrStatus').textContent = "Python Server Disconnected!";
-          } finally {
-            isProcessing = false;
-          }
-        }, 'image/jpeg');
-
-      }, 500);
-
-    } catch (err) {
-      alert("Screen Capture failed: " + err);
-      document.getElementById('ocrStatus').textContent = "Failed";
+      const res = await fetch(`${SERVER}/`);
+      const data = await res.json();
+      SCREEN_IDS = data.screens || [];
+    } catch (e) {
+      SCREEN_IDS = [];
     }
   }
 
-  function stopOCR() {
-    if (ocrInterval) clearInterval(ocrInterval);
-    document.getElementById('ocrStatus').textContent = "Stopped";
-    const video = document.getElementById('streamVideo');
-    if (video.srcObject) {
-      video.srcObject.getTracks().forEach(track => track.stop());
-    }
-  }
-
-  init();
-  loadFromCloud();
+  buildScreenCards();
+  checkServer();
+  loadFromServer();
+  fetchScreenIds().then(() => {
+    buildScreenCards();
+    SCREEN_IDS.forEach(connectScreenStream);
+  });
+  setInterval(checkServer, 5000);
 </script>
 </body>
 </html>
